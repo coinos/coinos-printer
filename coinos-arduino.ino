@@ -2,10 +2,29 @@
 
 #include <ArduinoJson.h>
 #include <Thermal_Printer.h>
+#include <TimeLib.h>
 #include <WebSockets2_Generic.h>
 #include <WiFi.h>
 
 using namespace websockets2_generic;
+
+String receipt = R"(
+************************
+COINOS PAYMENT RECEIVED
+************************
+
+$date
+$time
+
+$$fiat + $$fiatTip
+$amount + $tip sats
+
+Total: $$fiatTotal
+
+https://coinos.io/invoice/$id
+
+************************
+)";
 
 void onMessageCallback(WebsocketsMessage message)
 {
@@ -20,8 +39,43 @@ void onMessageCallback(WebsocketsMessage message)
   }
 
   if (doc["type"] == "payment") {
-    Serial.println("YES");
-    getPayment(message.data());
+    const int sats = 100000000;
+
+    JsonObject data = doc["data"];
+    int amount = data["amount"];
+    int tip = data["tip"];
+    float rate = data["rate"];
+    unsigned long long created = data["created"];
+    time_t t = (created / 1000) - 25200;
+    String id = data["id"];
+
+    Serial.println(created);
+
+    char dateString[20];
+    char timeString[9];
+    char fiatString[10];
+    char fiatTipString[10];
+    char fiatTotalString[10];
+
+    struct tm *createdTime = gmtime(&t);
+
+    strftime(dateString, sizeof(dateString), "%B %d, %Y", createdTime);
+    strftime(timeString, sizeof(timeString), "%I:%M %p", createdTime);
+    dtostrf(amount * rate / sats, 0, 2, fiatString);
+    dtostrf(tip ? tip * rate / sats : 0, 0, 2, fiatTipString);
+    dtostrf((amount + tip) * rate / sats, 0, 2, fiatTotalString);
+  
+    receipt.replace("$date", dateString);
+    receipt.replace("$time", timeString);
+    receipt.replace("$fiatTip", fiatTipString);
+    receipt.replace("$fiatTotal", fiatTotalString);
+    receipt.replace("$amount", String(amount));
+    receipt.replace("$tip", String(tip));
+    receipt.replace("$time", timeString);
+    receipt.replace("$fiat", fiatString);
+    receipt.replace("$id", id);
+
+    tpPrint(const_cast<char*>(receipt.c_str()));
   } 
 }
 
@@ -54,10 +108,6 @@ void setup()
   Serial.begin(115200);
 
   while (!Serial && millis() < 5000);
-
-  Serial.print("\nStart Secured-ESP32-Client on ");
-  Serial.println(ARDUINO_BOARD);
-  Serial.println(WEBSOCKETS2_GENERIC_VERSION);
 
   // Connect to wifi
   WiFi.begin(ssid, password);
@@ -100,6 +150,13 @@ void setup()
     Serial.println("Not Connected!");
   }
 
+  if (tpScan())
+  {
+    if (tpConnect())
+    {
+      tpSetFont(0, 0, 0, 0, 0);
+    }
+  }
 }
 
 int period = 5000;
@@ -114,67 +171,4 @@ void loop()
     String msg = String("{\"type\":\"heartbeat\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE5NzcwNDIxLTNmNjUtMTFlZC05ZjU3LTAyNDJhYzJhMDAwNCIsImlhdCI6MTY4MjQ0MzQ3N30.ENhwdaGmmgDMUsAce7y3_50lAyRUk_Z8PcAm9JeGhG4\"}");
     client.send(msg);
   } 
-}
-
-bool getPayment(String body)
-{
-  WiFiClientSecure client;
-  client.setInsecure(); //Some versions of WiFiClientSecure need this
-
-  if (!client.connect("coinos.io", 443))
-  {
-    Serial.println("Http connection failed");
-    delay(3000);
-    return false;
-  }
-
-  const String url = "/text";
-  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
-               "Host: coinos.io\r\n" +
-               "User-Agent: ESP32\r\n" +
-               "Content-Type: application/json\r\n" +
-               "Connection: close\r\n" +
-               "Content-Length: " + body.length() + "\r\n" +
-               "\r\n" +
-               body + "\n");
-
-  while (client.connected())
-  {
-    const String line = client.readStringUntil('\n');
-
-    if (line == "\r")
-    {
-      break;
-    }
-  }
-  const String line = client.readString();
-
-  Serial.println(line);
-
-  // Connect to printer
-  if (tpScan())
-  {
-    if (tpConnect())
-    {
-      Serial.println("Connected to printer");
-      tpSetFont(0, 0, 0, 0, 0);
-      tpPrint(const_cast<char*>(line.c_str()));
-    }
-  }
-
-  /* int i = 0; */
-  /* int j = 0; */
-  /*  */
-  /* while (i < line.length()) { */
-  /*   Serial.println(line.charAt(i)); */
-  /*   if (line.charAt(i) == '\n') { */
-  /*     String print = (line.substring(j, i - 1) + "\r"); */
-  /*     Serial.println(print); */
-  /*     tpPrint(const_cast<char*>(print.c_str())); */
-  /*     j = i; */
-  /*   }  */
-  /*  */
-  /*   i++; */
-  /* }  */
-  return true;
 }
