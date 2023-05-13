@@ -73,6 +73,7 @@ https://coinos.io/invoice/$id
     receipt.replace("$fiat", fiatString);
     receipt.replace("$id", id);
 
+    tpSetFont(0, 0, 0, 0, 0);
     tpPrint(const_cast<char*>(receipt.c_str()));
   } 
 }
@@ -147,14 +148,6 @@ void setup()
   {
     Serial.println("Not Connected!");
   }
-
-  if (tpScan())
-  {
-    if (tpConnect())
-    {
-      tpSetFont(0, 0, 0, 0, 0);
-    }
-  }
 }
 
 int period = 5000;
@@ -168,5 +161,7 @@ void loop()
 
     String msg = String("{\"type\":\"heartbeat\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE5NzcwNDIxLTNmNjUtMTFlZC05ZjU3LTAyNDJhYzJhMDAwNCIsImlhdCI6MTY4MjQ0MzQ3N30.ENhwdaGmmgDMUsAce7y3_50lAyRUk_Z8PcAm9JeGhG4\"}");
     client.send(msg);
+
+    if (!tpIsConnected()) tpScan("", 3) && tpConnect();
   } 
 }
