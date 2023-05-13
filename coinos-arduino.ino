@@ -8,7 +8,20 @@
 
 using namespace websockets2_generic;
 
-String receipt = R"(
+void onMessageCallback(WebsocketsMessage message)
+{
+  Serial.println(message.data());
+  StaticJsonDocument<1000> doc;
+  DeserializationError error = deserializeJson(doc, message.data());
+  if (error)
+  {
+    Serial.print("deserializeJson() failed: ");
+    Serial.println(error.f_str());
+    return;
+  }
+
+  if (doc["type"] == "payment") {
+    String receipt = R"(
 ************************
 COINOS PAYMENT RECEIVED
 ************************
@@ -24,21 +37,8 @@ Total: $$fiatTotal
 https://coinos.io/invoice/$id
 
 ************************
-)";
+    )";
 
-void onMessageCallback(WebsocketsMessage message)
-{
-  Serial.println(message.data());
-  StaticJsonDocument<1000> doc;
-  DeserializationError error = deserializeJson(doc, message.data());
-  if (error)
-  {
-    Serial.print("deserializeJson() failed: ");
-    Serial.println(error.f_str());
-    return;
-  }
-
-  if (doc["type"] == "payment") {
     const int sats = 100000000;
 
     JsonObject data = doc["data"];
@@ -48,8 +48,6 @@ void onMessageCallback(WebsocketsMessage message)
     unsigned long long created = data["created"];
     time_t t = (created / 1000) - 25200;
     String id = data["id"];
-
-    Serial.println(created);
 
     char dateString[20];
     char timeString[9];
