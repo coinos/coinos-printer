@@ -80,6 +80,8 @@ https://coinos.io/invoice/$id
 
 void onEventsCallback(WebsocketsEvent event, String data)
 {
+  Serial.println("SOCKET EVENT");
+  Serial.println(data);
   (void) data;
 
   if (event == WebsocketsEvent::ConnectionOpened)
@@ -108,46 +110,12 @@ void setup()
 
   while (!Serial && millis() < 5000);
 
-  // Connect to wifi
-  WiFi.begin(ssid, password);
-
-  // Wait some time to connect to wifi
-  for (int i = 0; i < 10 && WiFi.status() != WL_CONNECTED; i++)
-  {
-    Serial.print(".");
-    delay(1000);
-  }
-
-  // Check if connected to wifi
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    Serial.println("No Wifi!");
-    return;
-  }
-
-  // run callback when messages are received
   client.onMessage(onMessageCallback);
-
-  // run callback when events are occuring
   client.onEvent(onEventsCallback);
-
-  // Before connecting, set the ssl fingerprint of the server
   client.setCACert(cert);
 
-  // Connect to server
-  bool connected = client.connect(websockets_connection_string);
+  connect();
 
-  if (connected)
-  {
-    Serial.println("Connected!");
-
-    String msg = String("{\"type\":\"login\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE5NzcwNDIxLTNmNjUtMTFlZC05ZjU3LTAyNDJhYzJhMDAwNCIsImlhdCI6MTY4MjQ0MzQ3N30.ENhwdaGmmgDMUsAce7y3_50lAyRUk_Z8PcAm9JeGhG4\"}");
-    client.send(msg);
-  }
-  else
-  {
-    Serial.println("Not Connected!");
-  }
 }
 
 int period = 5000;
@@ -155,13 +123,57 @@ unsigned long time_now = 0;
 
 void loop()
 {
-  client.poll();
+  if (WiFi.status() == WL_CONNECTED){
+    client.poll();
+  }
+
   if ((unsigned long)(millis() - time_now) > period) {
+    connect();
+
+
     time_now = millis();
-
-    String msg = String("{\"type\":\"heartbeat\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE5NzcwNDIxLTNmNjUtMTFlZC05ZjU3LTAyNDJhYzJhMDAwNCIsImlhdCI6MTY4MjQ0MzQ3N30.ENhwdaGmmgDMUsAce7y3_50lAyRUk_Z8PcAm9JeGhG4\"}");
-    client.send(msg);
-
-    if (!tpIsConnected()) tpScan("", 3) && tpConnect();
   } 
+}
+
+void connect() {
+  if (WiFi.status() != WL_CONNECTED) {
+    client.close(CloseReason_NormalClosure);
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    WiFi.disconnect();
+    delay(1000);
+    WiFi.begin(ssid, password);
+    delay(2000);
+
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("Connected to Wi-Fi network with IP address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("Not connected to Wi-Fi network");
+  }
+
+  if (client.available()) {
+    Serial.println("Sending heartbeat");
+    String msg = String("{\"type\":\"heartbeat\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE5NzcwNDIxLTNmNjUtMTFlZC05ZjU3LTAyNDJhYzJhMDAwNCIsImlhdCI6MTY4MjQ0MzQ3N30.ENhwdaGmmgDMUsAce7y3_50lAyRUk_Z8PcAm9JeGhG4\"}");
+
+    client.send(msg);
+  } else {
+    Serial.println("No socket");
+
+    bool connected = client.connect(websockets_connection_string);
+
+    if (connected) {
+      Serial.println("Socket Connected!");
+
+      String msg = String("{\"type\":\"login\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE5NzcwNDIxLTNmNjUtMTFlZC05ZjU3LTAyNDJhYzJhMDAwNCIsImlhdCI6MTY4MjQ0MzQ3N30.ENhwdaGmmgDMUsAce7y3_50lAyRUk_Z8PcAm9JeGhG4\"}");
+
+      client.send(msg);
+    } else {
+      Serial.println("Socket Not Connected!");
+    }
+  } 
+
+  if (!tpIsConnected()) tpScan("", 3) && tpConnect();
 }
