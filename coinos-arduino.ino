@@ -120,6 +120,7 @@ void setup()
 
 int period = 5000;
 unsigned long time_now = 0;
+int failures = 0;
 
 void loop()
 {
@@ -129,13 +130,13 @@ void loop()
 
   if ((unsigned long)(millis() - time_now) > period) {
     connect();
-
-
     time_now = millis();
   } 
 }
 
 void connect() {
+  bool socketConnected;
+
   if (WiFi.status() != WL_CONNECTED) {
     client.close(CloseReason_NormalClosure);
     Serial.print("Attempting to connect to SSID: ");
@@ -156,24 +157,32 @@ void connect() {
 
   if (client.available()) {
     Serial.println("Sending heartbeat");
-    String msg = String("{\"type\":\"heartbeat\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE5NzcwNDIxLTNmNjUtMTFlZC05ZjU3LTAyNDJhYzJhMDAwNCIsImlhdCI6MTY4MjQ0MzQ3N30.ENhwdaGmmgDMUsAce7y3_50lAyRUk_Z8PcAm9JeGhG4\"}");
+    String msg = String("{\"type\":\"heartbeat\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU2ZWRlZTNhLTdlYTktNDdlNi1hOTgxLWY0N2M2NDhmOWQ2MSIsImlhdCI6MTY4NDk2MjEwMH0.juSxoZmWYcG59aKtjxtEfhoTH7Dxe7tHAy1eArOrLks\"}");
 
     client.send(msg);
+
+    if (!tpIsConnected()) {
+      Serial.println("Connecting to Bluetooth");
+      tpScan("", 3) && tpConnect();
+    } 
   } else {
     Serial.println("No socket");
+    failures++;
 
-    bool connected = client.connect(websockets_connection_string);
+    socketConnected = client.connect(websockets_connection_string);
 
-    if (connected) {
+    if (socketConnected) {
       Serial.println("Socket Connected!");
 
-      String msg = String("{\"type\":\"login\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE5NzcwNDIxLTNmNjUtMTFlZC05ZjU3LTAyNDJhYzJhMDAwNCIsImlhdCI6MTY4MjQ0MzQ3N30.ENhwdaGmmgDMUsAce7y3_50lAyRUk_Z8PcAm9JeGhG4\"}");
+      String msg = String("{\"type\":\"login\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU2ZWRlZTNhLTdlYTktNDdlNi1hOTgxLWY0N2M2NDhmOWQ2MSIsImlhdCI6MTY4NDk2MjEwMH0.juSxoZmWYcG59aKtjxtEfhoTH7Dxe7tHAy1eArOrLks\"}");
 
       client.send(msg);
+
     } else {
+      client.close(CloseReason_NormalClosure);
       Serial.println("Socket Not Connected!");
     }
   } 
 
-  if (!tpIsConnected()) tpScan("", 3) && tpConnect();
+  if (failures > 5) ESP.restart();
 }
