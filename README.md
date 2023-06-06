@@ -1,15 +1,18 @@
 # Coinos Arduino
 
-This code can be flashed onto an ESP32 development board to instruct it to connect to a WiFi AP and Bluetooth Thermal Printer. The code will establish a Websocket connection to the <a href="https://coinos.io/docs">Coinos API</a> using the JWT auth token of a specific account and listen for payments that are received into the account. When a payment is detected, a receipt will be printed with the amount and time of the transaction.
+This code can be flashed onto an <a href="https://www.amazon.ca/WayinTop-Development-ESP-WROOM-32-Bluetooth-Microcontroller/dp/B086ZMDB7H/">ESP32 development board</a> to instruct it to connect to a WiFi AP and <a href="https://www.amazon.ca/gp/product/B09QPQ76SN/">Bluetooth thermal printer</a>.
+
+The code will establish a Websocket connection to the <a href="https://coinos.io/docs">Coinos API</a> using the JWT auth token of a specific account and listen for payments that are received into the account. 
+
+When a payment is detected, a receipt will be printed with the amount and time of the transaction.
 
 This way, staff can confirm payment receipt without needing to login to the app on a phone or tablet device, which makes training easier.
-
-Customers can initate the payment by scanning a static QR code that directs them to the merchant's payment page to generate an invoice and add a tip, which they an then click on or copy to their bitcoin wallet of choice.
 
 ## Setup
 
    cp defines.h.sample defines.h
-   # edit this file to configure your JWT auth token and WiFi ssid / password
+
+Edit `defines.h` to configure your JWT auth token and WiFi ssid / password
 
 ## Flashing
 
