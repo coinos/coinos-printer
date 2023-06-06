@@ -22,6 +22,8 @@ void onMessageCallback(WebsocketsMessage message)
 
   if (doc["type"] == "payment") {
     String receipt = R"(
+
+
 ************************
 COINOS PAYMENT RECEIVED
 ************************
@@ -37,6 +39,8 @@ Total: $$fiatTotal
 https://coinos.io/invoice/$id
 
 ************************
+
+
     )";
 
     const int sats = 100000000;
@@ -118,7 +122,7 @@ void setup()
 
 }
 
-int period = 5000;
+int period = 4000;
 unsigned long time_now = 0;
 int failures = 0;
 
@@ -144,8 +148,7 @@ void connect() {
     WiFi.disconnect();
     delay(1000);
     WiFi.begin(ssid, password);
-    delay(2000);
-
+    delay(5000);
   }
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -156,15 +159,10 @@ void connect() {
   }
 
   if (client.available()) {
-    Serial.println("Sending heartbeat");
-    String msg = String("{\"type\":\"heartbeat\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU2ZWRlZTNhLTdlYTktNDdlNi1hOTgxLWY0N2M2NDhmOWQ2MSIsImlhdCI6MTY4NDk2MjEwMH0.juSxoZmWYcG59aKtjxtEfhoTH7Dxe7tHAy1eArOrLks\"}");
+    String msg = "{\"type\":\"heartbeat\",\"data\":\"" + String(token) + "\"}";
 
     client.send(msg);
 
-    if (!tpIsConnected()) {
-      Serial.println("Connecting to Bluetooth");
-      tpScan("", 3) && tpConnect();
-    } 
   } else {
     Serial.println("No socket");
     failures++;
@@ -174,15 +172,21 @@ void connect() {
     if (socketConnected) {
       Serial.println("Socket Connected!");
 
-      String msg = String("{\"type\":\"login\",\"data\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU2ZWRlZTNhLTdlYTktNDdlNi1hOTgxLWY0N2M2NDhmOWQ2MSIsImlhdCI6MTY4NDk2MjEwMH0.juSxoZmWYcG59aKtjxtEfhoTH7Dxe7tHAy1eArOrLks\"}");
+      String msg = "{\"type\":\"login\",\"data\":\"" + String(token) + "\"}";
 
       client.send(msg);
 
     } else {
-      client.close(CloseReason_NormalClosure);
       Serial.println("Socket Not Connected!");
+      client.close(CloseReason_NormalClosure);
     }
   } 
+
+  if (!tpIsConnected()) {
+    Serial.println("Connecting to Bluetooth");
+    tpScan("", 3) && tpConnect();
+  } 
+
 
   if (failures > 5) ESP.restart();
 }

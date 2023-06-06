@@ -1,19 +1,16 @@
-/****************************************************************************************************************************
-  defines.h
-  For ESP32.
-
-  Based on and modified from Gil Maimon's ArduinoWebsockets library https://github.com/gilmaimon/ArduinoWebsockets
-  to support STM32F/L/H/G/WB/MP1, nRF52 and SAMD21/SAMD51 boards besides ESP8266 and ESP32
-
-
-  The library provides simple and easy interface for websockets (Client and Server).
-
-  Built by Khoi Hoang https://github.com/khoih-prog/Websockets2_Generic
-  Licensed under MIT license
- *****************************************************************************************************************************/
-
 #ifndef defines_h
 #define defines_h
+
+// Set your Coinos auth token, WiFi ssid and password
+// Get the token from https://coinos.io/docs
+
+const char* token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRmNjg0YWRkLTYzMzUtNDFjZi1iNjM1LTgxYTM1MmIyOGIyZiIsImlhdCI6MTY4NjAyMTA5NH0.zNkkHVVIeZ3kQXNUCa6IZnbEHDqDO8o8DAwHV_Y29Go";
+const char* ssid = "ssid";
+const char* password = "password";
+
+// Everything else below this line should remain constant
+
+const char* websockets_connection_string = "wss://coinos.io/ws";
 
 #if !( defined(ESP8266) ||  defined(ESP32) )
 #error This code is intended to run on the ESP32 platform! Please check your Tools->Board setting.
@@ -36,14 +33,6 @@
 // Debug Level from 0 to 4
 #define _WEBSOCKETS_LOGLEVEL_     3
 
-const char* ssid = "ssid"; //Enter SSID
-const char* password = "passwod"; //Enter Password
-
-// Deprecated echo.websocket.org to be replaced or it won't work
-const char* websockets_connection_string = "wss://coinos.io/ws"; //Enter server adress
-
-// KH, This certificate was updated 15.04.2021,
-// Issued on Mar 15th 2021, expired on June 13th 2021
 const char cert[] PROGMEM = \
 "-----BEGIN CERTIFICATE-----\n" \
 "MIIFYDCCBEigAwIBAgIQQAF3ITfU6UK47naqPGQKtzANBgkqhkiG9w0BAQsFADA/\n" \
