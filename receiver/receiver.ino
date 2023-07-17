@@ -1,12 +1,13 @@
 #include "defines.h"
 
 #include <ArduinoJson.h>
-#include <Thermal_Printer.h>
 #include <TimeLib.h>
 #include <WebSockets2_Generic.h>
-#include <WiFi.h>
+#include <ESP8266WiFi.h>
 
 using namespace websockets2_generic;
+
+#define SIGNAL_PIN 2
 
 void onMessageCallback(WebsocketsMessage message)
 {
@@ -77,8 +78,11 @@ https://coinos.io/invoice/$id
     receipt.replace("$fiat", fiatString);
     receipt.replace("$id", id);
 
-    tpSetFont(0, 0, 0, 0, 0);
-    tpPrint(const_cast<char*>(receipt.c_str()));
+    Serial1.print(receipt.c_str());
+    digitalWrite(SIGNAL_PIN, HIGH);
+    delay(10);
+    digitalWrite(SIGNAL_PIN, LOW);
+    // tpPrint(const_cast<char*>(receipt.c_str()));
   } 
 }
 
@@ -86,6 +90,7 @@ void onEventsCallback(WebsocketsEvent event, String data)
 {
   Serial.println("SOCKET EVENT");
   Serial.println(data);
+  
   (void) data;
 
   if (event == WebsocketsEvent::ConnectionOpened)
@@ -107,16 +112,18 @@ void onEventsCallback(WebsocketsEvent event, String data)
 }
 
 WebsocketsClient client;
-
+const char echo_org_ssl_fingerprint[] PROGMEM   = "68 82 CB EB D4 76 F5 0A D4 B4 B2 38 9B 4E 43 95 B3 20 FB BA";
 void setup()
 {
   Serial.begin(115200);
+  Serial1.begin(19200);
+  pinMode(SIGNAL_PIN, OUTPUT);
 
   while (!Serial && millis() < 5000);
 
   client.onMessage(onMessageCallback);
   client.onEvent(onEventsCallback);
-  client.setCACert(cert);
+  client.setFingerprint(echo_org_ssl_fingerprint);
 
   connect();
 
@@ -181,12 +188,6 @@ void connect() {
       client.close(CloseReason_NormalClosure);
     }
   } 
-
-  if (!tpIsConnected()) {
-    Serial.println("Connecting to Bluetooth");
-    tpScan("", 3) && tpConnect();
-  } 
-
 
   if (failures > 5) ESP.restart();
 }
