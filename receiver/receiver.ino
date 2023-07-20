@@ -18,21 +18,36 @@ void setup() {
     // VSPI = CS:  5, CLK: 18, MOSI: 23, MISO: 19
     slave.setDataMode(SPI_MODE0);
     slave.begin(VSPI);
+
+    set_buffer();
+}
+
+
+void set_buffer() {
+    for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
+        spi_slave_tx_buf[i] = (0xFF - i) & 0xFF;
+    }
+    memset(spi_slave_rx_buf, 0, BUFFER_SIZE);
 }
 
 void loop() {
     // if there is no transaction in queue, add transaction
-    if (slave.remained() == 0)
+    if (slave.remained() == 0) {
         slave.queue(spi_slave_rx_buf, spi_slave_tx_buf, BUFFER_SIZE);
+    }
 
     // if transaction has completed from master,
     // available() returns size of results of transaction,
-    // and `spi_slave_rx_buf` is automatically updated
-    String str;
-    int size = slave.available();
-    while (size > 0) {
-      hdlc.charReceiver(reinterpret_cast<char*>(spi_slave_rx_buf));
-      size = slave.available();
+    // and buffer is automatically updated
+
+    while (slave.available()) {
+        // show received data
+        for (size_t i = 0; i < slave.size(); ++i) {
+            printf("%c ", spi_slave_rx_buf[i]);
+        }
+        printf("\n");
+
+        slave.pop();
     }
 }
 
