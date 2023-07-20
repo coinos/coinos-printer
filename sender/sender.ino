@@ -5,7 +5,7 @@
 #define SPI_SS     5  // Default is GPIO15, but you can use any GPIO
 #define MAX_HDLC_FRAME_LENGTH 32
 
-static const int spiClk = 1600000; // 4 MHz
+static const int spiClk = 400000; // 4 MHz
 
 void send_character(uint8_t data);
 
@@ -33,18 +33,9 @@ void send_character(uint8_t data) {
   SPI.transfer(data);
   digitalWrite(SPI_SS, HIGH);
   SPI.endTransaction();
+  delay(10);
 }
 
-void spi_send_command() {
-  send_character('a');
-  delay(1000);
-  send_character('b');
-  delay(1000);
-  send_character('c');
-  delay(1000);
-}
-
-/*
 void spi_send_command() {
   Serial.println("Sending");
   // String to send
@@ -58,4 +49,3 @@ void spi_send_command() {
   hdlc.sendFrame((uint8_t*)charBuffer, dataToSend.length());
   Serial.println("Sent frame");
 }
-*/

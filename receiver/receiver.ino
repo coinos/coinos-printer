@@ -44,6 +44,7 @@ void loop() {
         // show received data
         for (size_t i = 0; i < slave.size(); ++i) {
             printf("%c ", spi_slave_rx_buf[i]);
+            hdlc.charReceiver(spi_slave_rx_buf[i]);
         }
         printf("\n");
 
