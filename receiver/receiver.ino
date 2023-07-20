@@ -1,46 +1,52 @@
-#include <SPI.h>
+#include <ESP32SPISlave.h>
+#include <Arduhdlc.h>
 
-// Pin Definitions
-#define SCK_PIN 18
-#define MISO_PIN 19
-#define MOSI_PIN 23
-#define CS_PIN 5
+#define MAX_HDLC_FRAME_LENGTH 32
 
-// Buffer to store received data
-#define BUF_SIZE 256
-uint8_t buf[BUF_SIZE];
+ESP32SPISlave slave;
+
+Arduhdlc hdlc(&send_character, &hdlc_frame_handler, MAX_HDLC_FRAME_LENGTH);
+
+static constexpr uint32_t BUFFER_SIZE {32};
+uint8_t spi_slave_tx_buf[BUFFER_SIZE];
+uint8_t spi_slave_rx_buf[BUFFER_SIZE];
 
 void setup() {
-  Serial.begin(115200);
-  while(!Serial);
+    Serial.begin(115200);
 
-  pinMode(SCK_PIN, INPUT);
-  pinMode(MOSI_PIN, INPUT);
-  pinMode(MISO_PIN, OUTPUT);
-  pinMode(CS_PIN, INPUT_PULLUP);
-
-  SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, CS_PIN);  // Init SPI
-  SPI.setHwCs(false);  // Handle CS manually
+    // HSPI = CS: 15, CLK: 14, MOSI: 13, MISO: 12
+    // VSPI = CS:  5, CLK: 18, MOSI: 23, MISO: 19
+    slave.setDataMode(SPI_MODE0);
+    slave.begin(VSPI);
 }
 
 void loop() {
-  // Check if CS is low (active)
-  if (digitalRead(CS_PIN) == LOW) {
-    // Read data while CS is active
-    int i = 0;
-    while (digitalRead(CS_PIN) == LOW && i < BUF_SIZE) {
-      buf[i++] = SPI.transfer(0xFF);  // Read data, send dummy data
-    }
+    // if there is no transaction in queue, add transaction
+    if (slave.remained() == 0)
+        slave.queue(spi_slave_rx_buf, spi_slave_tx_buf, BUFFER_SIZE);
 
-    // Process received data
-    Serial.print("Received data: ");
-    for (int j = 0; j < i; j++) {
-      Serial.print(buf[j], HEX); 
-      Serial.print(" ");
+    // if transaction has completed from master,
+    // available() returns size of results of transaction,
+    // and `spi_slave_rx_buf` is automatically updated
+    String str;
+    int size = slave.available();
+    while (size > 0) {
+      hdlc.charReceiver(reinterpret_cast<char*>(spi_slave_rx_buf));
+      size = slave.available();
     }
-    Serial.println();
+}
 
-    // Clear buffer
-    memset(buf, 0, sizeof(buf));
-  }
+// Function to send out one 8-bit character
+void send_character(uint8_t data) {
+  return;
+}
+
+// Frame handler function to process received HDLC frames
+void hdlc_frame_handler(const uint8_t* data, uint16_t length) {
+  // Do something with the received HDLC frame
+  // ...
+
+  // Example: Print the received frame as a string
+  String receivedData((const char*)data, length);
+  Serial.println("Received HDLC frame: " + receivedData);
 }
