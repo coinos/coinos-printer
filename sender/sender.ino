@@ -10,8 +10,7 @@
 #include <DollarsToWords.h>
 #include <math.h>
 
-#include "AudioFileSourceHTTPStream.h"
-#include "AudioFileSourceBuffer.h"
+#include "AudioFileSourceLittleFS.h"
 #include "AudioGeneratorMP3.h"
 
 #define MAX_HDLC_FRAME_LENGTH 512
@@ -21,8 +20,7 @@ websockets2_generic::WebsocketsClient client;
 
 AudioOutputI2S *out = NULL;
 AudioGeneratorMP3 *mp3;
-AudioFileSourceHTTPStream *file;
-AudioFileSourceBuffer *buff;
+AudioFileSourceLittleFS *file;
 
 const char *URL="http://192.168.1.77:3000/output.mp3";
 
@@ -127,10 +125,10 @@ void onMessageCallback(websockets2_generic::WebsocketsMessage message)
     s.toCharArray(charBuffer, MAX_HDLC_FRAME_LENGTH);
     hdlc.sendFrame((uint8_t*)charBuffer, s.length());
 
-    file = new AudioFileSourceHTTPStream(URL);
-    buff = new AudioFileSourceBuffer(file, 2048);
+
+    file = new AudioFileSourceLittleFS("/output.mp3");
     mp3 = new AudioGeneratorMP3();
-    mp3->begin(buff, out);
+    mp3->begin(file, out);
 
     ESP8266SAM *sam = new ESP8266SAM;
     sam->Say(out, "Bitcoin payment received!");
