@@ -1,68 +1,115 @@
-#include <ESP32SPISlave.h>
 #include <Arduhdlc.h>
+#include <Thermal_Printer.h>
+#include <TimeLib.h>
 
-#define MAX_HDLC_FRAME_LENGTH 32
-
-ESP32SPISlave slave;
+#define MAX_HDLC_FRAME_LENGTH 512
 
 Arduhdlc hdlc(&send_character, &hdlc_frame_handler, MAX_HDLC_FRAME_LENGTH);
 
-static constexpr uint32_t BUFFER_SIZE {32};
-uint8_t spi_slave_tx_buf[BUFFER_SIZE];
-uint8_t spi_slave_rx_buf[BUFFER_SIZE];
-
 void setup() {
-    Serial.begin(115200);
-
-    // HSPI = CS: 15, CLK: 14, MOSI: 13, MISO: 12
-    // VSPI = CS:  5, CLK: 18, MOSI: 23, MISO: 19
-    slave.setDataMode(SPI_MODE0);
-    slave.begin(VSPI);
-
-    set_buffer();
-}
-
-
-void set_buffer() {
-    for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
-        spi_slave_tx_buf[i] = (0xFF - i) & 0xFF;
-    }
-    memset(spi_slave_rx_buf, 0, BUFFER_SIZE);
+  Serial.begin(115200);
 }
 
 void loop() {
-    // if there is no transaction in queue, add transaction
-    if (slave.remained() == 0) {
-        slave.queue(spi_slave_rx_buf, spi_slave_tx_buf, BUFFER_SIZE);
-    }
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    hdlc.charReceiver(inChar);
+  }
 
-    // if transaction has completed from master,
-    // available() returns size of results of transaction,
-    // and buffer is automatically updated
-
-    while (slave.available()) {
-        // show received data
-        for (size_t i = 0; i < slave.size(); ++i) {
-            printf("%c ", spi_slave_rx_buf[i]);
-            hdlc.charReceiver(spi_slave_rx_buf[i]);
-        }
-        printf("\n");
-
-        slave.pop();
-    }
+  if (!tpIsConnected()) {
+    // Serial.println("Connecting to Bluetooth");
+    tpScan("", 3) && tpConnect();
+  } 
 }
 
-// Function to send out one 8-bit character
-void send_character(uint8_t data) {
-  return;
-}
+void send_character(uint8_t data) {};
 
-// Frame handler function to process received HDLC frames
 void hdlc_frame_handler(const uint8_t* data, uint16_t length) {
-  // Do something with the received HDLC frame
-  // ...
+  String message((const char*)data, length);
+  
+  String receipt = R"(
+  ************************
+  COINOS PAYMENT RECEIVED
+  ************************
 
-  // Example: Print the received frame as a string
-  String receivedData((const char*)data, length);
-  Serial.println("Received HDLC frame: " + receivedData);
+  $date
+  $time
+
+  $$fiat + $$fiatTip
+
+  Total: $$fiatTotal
+
+  ************************
+
+
+
+  )";
+
+  // Serial.println(message);
+
+  String parts[4];
+  split(message, ':', parts, 4);
+
+  int amount = parts[0].toInt();
+  int tip = parts[1].toInt(); 
+  float rate = parts[2].toFloat();
+
+  char charBuf[32];
+  parts[3].toCharArray(charBuf, 32);
+  unsigned long long created = strtoull(charBuf, NULL, 10);
+
+  time_t t = (created / 1000) - 25200;
+
+  char dateString[20];
+  char timeString[9];
+  char fiatString[10];
+  char fiatTipString[10];
+  char fiatTotalString[10];
+
+  struct tm *createdTime = gmtime(&t);
+
+  const int sats = 100000000;
+  strftime(dateString, sizeof(dateString), "%B %d, %Y", createdTime);
+  strftime(timeString, sizeof(timeString), "%I:%M %p", createdTime);
+  dtostrf(amount * rate / sats, 0, 2, fiatString);
+  dtostrf(tip ? tip * rate / sats : 0, 0, 2, fiatTipString);
+  dtostrf((amount + tip) * rate / sats, 0, 2, fiatTotalString);
+
+  receipt.replace("$date", dateString);
+  receipt.replace("$time", timeString);
+
+  if (tip > 0) {
+    receipt.replace("$fiatTip", fiatTipString);
+  } else {
+    receipt.replace("+ $$fiatTip", "");
+  } 
+
+  receipt.replace("$fiatTotal", fiatTotalString);
+  receipt.replace("$amount", String(amount));
+  receipt.replace("$tip", String(tip));
+  receipt.replace("$time", timeString);
+  receipt.replace("$fiat", fiatString);
+
+  tpSetFont(0, 0, 0, 0, 0);
+  tpPrint(const_cast<char*>(receipt.c_str()));
+}
+
+void split(String message, char delimiter, String parts[], int partsSize) {
+  int partIndex = 0;
+  int delimiterIndex = message.indexOf(delimiter);
+
+  while (delimiterIndex != -1) {
+    if (partIndex < partsSize) {
+      parts[partIndex] = message.substring(0, delimiterIndex);
+      partIndex++;
+    }
+
+    message = message.substring(delimiterIndex + 1);
+    
+    delimiterIndex = message.indexOf(delimiter);
+  }
+
+  if (partIndex < partsSize) {
+    parts[partIndex] = message;
+  }
 }
