@@ -14,6 +14,7 @@ void loop() {
   while (Serial.available()) {
     char inChar = (char)Serial.read();
     hdlc.charReceiver(inChar);
+    Serial.print(inChar);
   }
 
   if (!tpIsConnected()) {
@@ -35,9 +36,10 @@ void hdlc_frame_handler(const uint8_t* data, uint16_t length) {
   $date
   $time
 
-  $$fiat + $$fiatTip
+  Amount: $$fiat
+  Tip:    $$fiatTip
 
-  Total: $$fiatTotal
+  Total:  $$fiatTotal
 
   ************************
 
