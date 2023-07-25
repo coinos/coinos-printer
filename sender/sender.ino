@@ -1,4 +1,5 @@
 #include "defines.h"
+#include <ArduinoOTA.h>
 #include <Arduhdlc.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -39,6 +40,7 @@ void setup()
   client.setFingerprint(fingerprint);
 
   connect();
+  ArduinoOTA.begin();
 }
 
 int period = 4000;
@@ -52,6 +54,8 @@ void loop()
   /*     mp3->stop(); */
   /*   } */
   /* }  */
+
+  ArduinoOTA.handle();
 
   if (WiFi.status() == WL_CONNECTED){
     client.poll();
