@@ -83,7 +83,8 @@ void hdlc_frame_handler(const uint8_t* data, uint16_t length) {
   if (tip > 0) {
     receipt.replace("$fiatTip", fiatTipString);
   } else {
-    receipt.replace("+ $$fiatTip", "");
+    receipt.replace("  Amount: $$fiat\n", "");
+    receipt.replace("  Tip:    $$fiatTip\n", "");
   } 
 
   receipt.replace("$fiatTotal", fiatTotalString);
