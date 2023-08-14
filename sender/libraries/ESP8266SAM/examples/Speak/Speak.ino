@@ -6,15 +6,18 @@ AudioOutputI2S *out = NULL;
 
 void setup()
 {
+  Serial.begin(115200);
   out = new AudioOutputI2S();
+  // out->SetPinout(4, 5, 2);
   out->begin();
 }
 
 void loop()
 {
   ESP8266SAM *sam = new ESP8266SAM;
-  sam->Say(out, "Can you hear me now?");
+  sam->Say(out, "Bitcoin payment received.");
   delay(500);
-  sam->Say(out, "I can't hear you!");
+  sam->Say(out, "One doller and forty five cents.");
   delete sam;
+  Serial.println("Done");
 }

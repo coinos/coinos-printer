@@ -13,7 +13,7 @@ void loop() {}
 #include "AudioFileSourceSPIFFS.h"
 #include "AudioFileSourceID3.h"
 #include "AudioGeneratorMP3.h"
-#include "AudioOutputI2SNoDAC.h"
+#include "AudioOutputI2S.h"
 
 // To run, set your ESP8266 build to 160MHz, and include a SPIFFS of 512KB or greater.
 // Use the "Tools->ESP8266/ESP32 Sketch Data Upload" menu to write the MP3 to SPIFFS
@@ -23,7 +23,7 @@ void loop() {}
 
 AudioGeneratorMP3 *mp3;
 AudioFileSourceSPIFFS *file;
-AudioOutputI2SNoDAC *out;
+AudioOutputI2S *out;
 AudioFileSourceID3 *id3;
 
 
@@ -61,7 +61,7 @@ void setup()
   file = new AudioFileSourceSPIFFS("/pno-cs.mp3");
   id3 = new AudioFileSourceID3(file);
   id3->RegisterMetadataCB(MDCallback, (void*)"ID3TAG");
-  out = new AudioOutputI2SNoDAC();
+  out = new AudioOutputI2S();
   mp3 = new AudioGeneratorMP3();
   mp3->begin(id3, out);
 }

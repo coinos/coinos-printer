@@ -1,66 +1,31 @@
-#include <Arduino.h>
-
-#if defined(ARDUINO_ARCH_RP2040)
-void setup() {}
-void loop() {}
-
-#else
-#if defined(ESP32)
-    #include <WiFi.h>
-#else
-    #include <ESP8266WiFi.h>
-#endif
-#include "AudioFileSourceICYStream.h"
+#include <ESP8266WiFi.h>
+#include "AudioFileSourceLittleFS.h"
+#include "AudioFileSourceHTTPStream.h"
 #include "AudioFileSourceBuffer.h"
 #include "AudioGeneratorMP3.h"
-#include "AudioOutputI2SNoDAC.h"
+#include "AudioOutputI2S.h"
 
 // To run, set your ESP8266 build to 160MHz, update the SSID info, and upload.
 
 // Enter your WiFi setup here:
 #ifndef STASSID
-#define STASSID "your-ssid"
-#define STAPSK  "your-password"
+#define STASSID "TELUS0800"
+#define STAPSK  "6chvt42zv3"
 #endif
 
 const char* ssid = STASSID;
 const char* password = STAPSK;
 
 // Randomly picked URL
-const char *URL="http://kvbstreams.dyndns.org:8000/wkvi-am";
+const char *URL="http://ln.coinos.io:9090/30eda8f4bb4ea0760e1a85f6218bd609886bc8e9e6a5878b7616a91c68e8fca6.mp3";
 
 AudioGeneratorMP3 *mp3;
-AudioFileSourceICYStream *file;
+AudioFileSourceLittleFS *file;
+AudioFileSourceHTTPStream *stream;
 AudioFileSourceBuffer *buff;
-AudioOutputI2SNoDAC *out;
+AudioOutputI2S *out;
 
-// Called when a metadata event occurs (i.e. an ID3 tag, an ICY block, etc.
-void MDCallback(void *cbData, const char *type, bool isUnicode, const char *string)
-{
-  const char *ptr = reinterpret_cast<const char *>(cbData);
-  (void) isUnicode; // Punt this ball for now
-  // Note that the type and string may be in PROGMEM, so copy them to RAM for printf
-  char s1[32], s2[64];
-  strncpy_P(s1, type, sizeof(s1));
-  s1[sizeof(s1)-1]=0;
-  strncpy_P(s2, string, sizeof(s2));
-  s2[sizeof(s2)-1]=0;
-  Serial.printf("METADATA(%s) '%s' = '%s'\n", ptr, s1, s2);
-  Serial.flush();
-}
-
-// Called when there's a warning or error (like a buffer underflow or decode hiccup)
-void StatusCallback(void *cbData, int code, const char *string)
-{
-  const char *ptr = reinterpret_cast<const char *>(cbData);
-  // Note that the string may be in PROGMEM, so copy it to RAM for printf
-  char s1[64];
-  strncpy_P(s1, string, sizeof(s1));
-  s1[sizeof(s1)-1]=0;
-  Serial.printf("STATUS(%s) '%d' = '%s'\n", ptr, code, s1);
-  Serial.flush();
-}
-
+bool oneDone = false;
 
 void setup()
 {
@@ -71,7 +36,7 @@ void setup()
   WiFi.disconnect();
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
-  
+
   WiFi.begin(ssid, password);
 
   // Try forever
@@ -82,14 +47,13 @@ void setup()
   Serial.println("Connected");
 
   audioLogger = &Serial;
-  file = new AudioFileSourceICYStream(URL);
-  file->RegisterMetadataCB(MDCallback, (void*)"ICY");
-  buff = new AudioFileSourceBuffer(file, 2048);
-  buff->RegisterStatusCB(StatusCallback, (void*)"buffer");
-  out = new AudioOutputI2SNoDAC();
+
+  const char *filename = "/received.mp3";
+  file = new AudioFileSourceLittleFS(filename);
+  Serial.printf("BEGIN...\n");
+  out = new AudioOutputI2S();
   mp3 = new AudioGeneratorMP3();
-  mp3->RegisterStatusCB(StatusCallback, (void*)"mp3");
-  mp3->begin(buff, out);
+  mp3->begin(file, out);
 }
 
 
@@ -105,8 +69,14 @@ void loop()
      }
     if (!mp3->loop()) mp3->stop();
   } else {
+    if (!oneDone) {
+      stream = new AudioFileSourceHTTPStream(URL);
+      buff = new AudioFileSourceBuffer(stream, 4096);
+      mp3->begin(buff, out);
+      oneDone = true;
+    }
+
     Serial.printf("MP3 done\n");
     delay(1000);
   }
 }
-#endif
