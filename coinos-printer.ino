@@ -1,11 +1,11 @@
 #include "defines.h" 
-#include "AudioFileSourceLittleFS.h"
 #include "AudioFileSourceHTTPStream.h"
 #include "AudioFileSourceBuffer.h"
-#include "AudioGeneratorMP3.h"
+#include "AudioFileSourceLittleFS.h"
+#include "AudioGeneratorWAV.h"
 #include "AudioOutputI2S.h"
 #include <ArduinoOTA.h> 
-#include <ArduinoJson.h> 
+#include <ESP8266HTTPClient.h>
 #include <SoftwareSerial.h> 
 #include <TimeLib.h> 
 #include <ESP8266WiFi.h> 
@@ -14,20 +14,9 @@
 
 SoftwareSerial printer(4, 5);
 
-AudioGeneratorMP3 *mp3;
-AudioFileSourceLittleFS *file;
-AudioFileSourceHTTPStream *stream;
-AudioFileSourceBuffer *buff;
-AudioOutputI2S *out;
-
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
-
-bool playOne = false;
-bool playTwo = false;
-bool finished = false;
-
-char id[64];
+String paymentHash;
 
 void split(String message, char delimiter, String parts[], int partsSize) {
   int partIndex = 0;
@@ -49,9 +38,9 @@ void split(String message, char delimiter, String parts[], int partsSize) {
   }
 }
 
-String paymentHash;
-
 void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.println(topic);
+
   char message[length + 1];
   memcpy(message, payload, length);
   message[length] = '\0';
@@ -128,6 +117,13 @@ void callback(char* topic, byte* payload, unsigned int length) {
   printer.println(receipt);
   paymentHash = parts[4];
 } 
+
+int contentLength;
+int totalBytesRead = 0;
+
+Stream* stream = nullptr;
+WiFiClient wifiClient;
+HTTPClient http;
  
 void setup() {
   Serial.begin(115200);
@@ -144,14 +140,15 @@ void setup() {
   mqtt.setServer(mqtt_server, 1883);
   mqtt.setCallback(callback);
 
+  audioLogger = &Serial;
+
   ArduinoOTA.begin();
 }
-
 
 void reconnect() {
   while (!mqtt.connected()) {
     Serial.print("Attempting MQTT connection...");
-    
+
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
     
@@ -168,95 +165,76 @@ void reconnect() {
 }
 
 void playAudio(String filename) {
-  AudioGeneratorMP3 *mp3;
+  AudioGeneratorWAV *wav;
   AudioFileSourceLittleFS *file;
   AudioOutputI2S *out;
 
   file = new AudioFileSourceLittleFS(filename.c_str());
-  mp3 = new AudioGeneratorMP3();
+  wav = new AudioGeneratorWAV();
   out = new AudioOutputI2S();
 
-  if (mp3->begin(file, out)) {
-    while (mp3->isRunning()) {
-      if (!mp3->loop()) {
-        mp3->stop();
+  if (wav->begin(file, out)) {
+    while (wav->isRunning()) {
+      if (!wav->loop()) {
+        wav->stop();
       }
     }
   }
 
   delete file;
   delete out;
-  delete mp3;
+  delete wav;
+}
+
+void playStream(String paymentHash) {
+  AudioGeneratorWAV *wav;
+  AudioFileSourceHTTPStream *stream;
+  AudioFileSourceBuffer *buff;
+  AudioOutputI2S *out;
+
+  String URL = "http://ln.coinos.io:9090/" + paymentHash + ".wav";
+  Serial.println("Streaming");
+  Serial.println(URL);
+  stream = new AudioFileSourceHTTPStream(URL.c_str());
+  buff = new AudioFileSourceBuffer(stream, 4096);
+  wav = new AudioGeneratorWAV();
+  out = new AudioOutputI2S();
+
+  delay(500);
+
+  if (wav->begin(buff, out)) {
+    Serial.println("Got in");
+    while (wav->isRunning()) {
+      if (!wav->loop()) {
+        wav->stop();
+      }
+    }
+  }
+
+  Serial.println("Done, cleaning up");
+
+  delete stream;
+  delete buff;
+  delete out;
+  delete wav;
 }
 
 int period = 10000;
 unsigned long time_now = 0;
-int failures = 0;
-bool played = false;
-
-
-void downloadAndSaveMP3(const char* url, const char* filename) {
-  WiFiClient wifiClient;
-  HTTPClient http;
-  http.begin(wifiClient, url);
-  int httpCode = http.GET();
-
-  if (httpCode == HTTP_CODE_OK) {
-    File file = LittleFS.open(filename, "w");
-    if (!file) {
-      Serial.println("Failed to open file for writing");
-      return;
-    }
-
-    int contentLength = http.getSize();
-    int totalBytesRead = 0;
-    
-    // Stream data from HTTP to file
-    Stream &stream = http.getStream();
-    const size_t bufferSize = 2048;
-    byte buffer[bufferSize];
-    Serial.println("Streaming");
-    while (stream.available()) {
-      const size_t bytesRead = stream.readBytes(buffer, bufferSize);
-      if (bytesRead > 0) {
-          file.write(buffer, bytesRead);
-          totalBytesRead += bytesRead;
-
-          if(totalBytesRead % 4096 == 0) { // For every 4KB written
-              file.flush();
-          }
-      }
-    }
-
-    if (totalBytesRead < contentLength) {
-      Serial.println("Warning: Not all bytes read from HTTP stream");
-    }
-    
-    file.close();
-  } else {
-    Serial.println("HTTP request failed");
-  }
-
-  http.end();
-}
 
 void loop() {
   ArduinoOTA.handle();
 
   if (!paymentHash.isEmpty()) {
-    String URL = "http://ln.coinos.io:9090/" + paymentHash + ".mp3";
-    delay(2000);
-    playAudio("/received.mp3");
-    delay(500);
-    downloadAndSaveMP3(URL.c_str(), "/mp3file.mp3");
-    Serial.println(URL);
-    playAudio("/mp3file.mp3");
+    playAudio("/received.wav");
+    playStream(paymentHash);
     paymentHash = "";
   } 
 
   if (!mqtt.connected()) {
     reconnect();
   }
+
   mqtt.loop();
   
   if ((unsigned long)(millis() - time_now) > period) {
