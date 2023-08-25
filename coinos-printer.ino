@@ -1,22 +1,18 @@
 #include "defines.h" 
-#include "AudioFileSourceHTTPStream.h"
 #include "AudioFileSourceBuffer.h"
 #include "AudioFileSourceLittleFS.h"
 #include "AudioGeneratorWAV.h"
 #include "AudioOutputI2S.h"
 #include <ArduinoOTA.h> 
-#include <ESP8266HTTPClient.h>
-#include <SoftwareSerial.h> 
+#include <HTTPClient.h>
 #include <TimeLib.h> 
-#include <ESP8266WiFi.h> 
-#include <WiFiClientSecure.h> 
+#include <WiFi.h> 
 #include <PubSubClient.h>
-
-SoftwareSerial printer(4, 5);
 
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 String paymentHash;
+bool ready = false;
 
 void split(String message, char delimiter, String parts[], int partsSize) {
   int partIndex = 0;
@@ -39,16 +35,16 @@ void split(String message, char delimiter, String parts[], int partsSize) {
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.println(topic);
-
   char message[length + 1];
   memcpy(message, payload, length);
   message[length] = '\0';
 
-  Serial.println(message);
+  if (strcmp(message, "done") == 0) {
+    ready = true;
+    return;
+  } 
 
   String receipt = R"(
-
 
 
   ************************
@@ -66,11 +62,12 @@ void callback(char* topic, byte* payload, unsigned int length) {
   ************************
 
 
-
   )";
 
   String parts[5];
   split(message, ':', parts, 5);
+
+  paymentHash = parts[4];
 
   int amount = parts[0].toInt();
   int tip = parts[1].toInt(); 
@@ -114,20 +111,18 @@ void callback(char* topic, byte* payload, unsigned int length) {
   receipt.replace("$fiat", fiatString);
 
   Serial.println(receipt);
-  printer.println(receipt);
-  paymentHash = parts[4];
+  Serial2.println(receipt);
 } 
 
 int contentLength;
 int totalBytesRead = 0;
 
-Stream* stream = nullptr;
 WiFiClient wifiClient;
 HTTPClient http;
  
 void setup() {
   Serial.begin(115200);
-  printer.begin(9600);
+  Serial2.begin(9600);
 
   if (!LittleFS.begin()) {
     Serial.println("Failed to mount LittleFS");
@@ -149,7 +144,7 @@ void reconnect() {
   while (!mqtt.connected()) {
     Serial.print("Attempting MQTT connection...");
 
-    String clientId = "ESP8266Client-";
+    String clientId = "Client-";
     clientId += String(random(0xffff), HEX);
     
     if (mqtt.connect(clientId.c_str(), "admin", "MPJzfq97")) {
@@ -186,37 +181,51 @@ void playAudio(String filename) {
   delete wav;
 }
 
-void playStream(String paymentHash) {
-  AudioGeneratorWAV *wav;
-  AudioFileSourceHTTPStream *stream;
-  AudioFileSourceBuffer *buff;
-  AudioOutputI2S *out;
 
+void downloadAudio(String paymentHash) {
   String URL = "http://ln.coinos.io:9090/" + paymentHash + ".wav";
-  Serial.println("Streaming");
-  Serial.println(URL);
-  stream = new AudioFileSourceHTTPStream(URL.c_str());
-  buff = new AudioFileSourceBuffer(stream, 4096);
-  wav = new AudioGeneratorWAV();
-  out = new AudioOutputI2S();
 
-  delay(500);
+  WiFiClient wifiClient;
+  HTTPClient http;
+  http.begin(wifiClient, URL.c_str());
+  int httpCode = http.GET();
 
-  if (wav->begin(buff, out)) {
-    Serial.println("Got in");
-    while (wav->isRunning()) {
-      if (!wav->loop()) {
-        wav->stop();
+  if (httpCode == HTTP_CODE_OK) {
+    File file = LittleFS.open("/amount.wav", "w");
+    if (!file) {
+      Serial.println("Failed to open file for writing");
+      return;
+    }
+
+    int contentLength = http.getSize();
+    int totalBytesRead = 0;
+    
+    Stream &stream = http.getStream();
+    const size_t bufferSize = 2048;
+    byte buffer[bufferSize];
+
+    while (stream.available()) {
+      const size_t bytesRead = stream.readBytes(buffer, bufferSize);
+      if (bytesRead > 0) {
+        file.write(buffer, bytesRead);
+        totalBytesRead += bytesRead;
+
+        if(totalBytesRead % 4096 == 0) {
+          file.flush();
+        }
       }
     }
+ 
+    if (totalBytesRead < contentLength) {
+      Serial.println("Warning: Not all bytes read from HTTP stream");
+    }
+    
+    file.close();
+  } else {
+    Serial.println("HTTP request failed");
   }
 
-  Serial.println("Done, cleaning up");
-
-  delete stream;
-  delete buff;
-  delete out;
-  delete wav;
+  http.end();
 }
 
 int period = 10000;
@@ -225,10 +234,12 @@ unsigned long time_now = 0;
 void loop() {
   ArduinoOTA.handle();
 
-  if (!paymentHash.isEmpty()) {
+  if (ready && !paymentHash.isEmpty()) {
+    downloadAudio(paymentHash);
     playAudio("/received.wav");
-    playStream(paymentHash);
+    playAudio("/amount.wav");
     paymentHash = "";
+    ready = false;
   } 
 
   if (!mqtt.connected()) {
