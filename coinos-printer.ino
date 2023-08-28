@@ -16,11 +16,8 @@
 
 // HardwareSerial printer(1);
 
-WiFiClient wifi;
-PubSubClient mqtt(wifi);
-HTTPClient http;
-WiFiClient wifi2;
-
+WiFiClient espClient;
+PubSubClient mqtt(espClient);
 String paymentHash;
 bool ready = false;
 bool buffering = false;
@@ -45,16 +42,37 @@ void split(String message, char delimiter, String parts[], int partsSize) {
   }
 }
 
+const size_t bufferSize = 48 * 1024;
+unsigned char source[bufferSize];
+size_t bytesRead = 0;
+
 void callback(char* topic, byte* payload, unsigned int length) {
   char message[length + 1];
   memcpy(message, payload, length);
   message[length] = '\0';
 
   if (strcmp(message, "end") == 0) {
+    Serial.println("Ready!");
+    buffering = false;
     ready = true;
     return;
   } 
   
+  if (strcmp(message, "start") == 0) {
+    Serial.println("Starting");
+    buffering = true;
+    return;
+  } 
+
+  if (buffering) {
+    Serial.print(".");
+    if (bytesRead + length <= bufferSize) memcpy(source + bytesRead, payload, length);
+    bytesRead += length;
+    return;
+  } 
+
+  Serial.println("Receipt");
+
   String receipt = R"(
 
 
@@ -128,12 +146,19 @@ void callback(char* topic, byte* payload, unsigned int length) {
 int contentLength;
 int totalBytesRead = 0;
 
+WiFiClient wifiClient;
+HTTPClient http;
+ 
 void setup() {
   Serial.begin(115200);
   printer.begin(9600);
   // printer.begin(9600, SERIAL_8N1, 7, 6);
 
   while (!Serial) { delay(10); }
+
+  String mac = WiFi.macAddress();
+  Serial.print("MAC address of this device: ");
+  Serial.println(mac);
 
   if (!LittleFS.begin()) {
     Serial.println("Failed to mount LittleFS");
@@ -178,7 +203,6 @@ void playAudio(String filename) {
   file = new AudioFileSourceLittleFS(filename.c_str());
   mp3 = new AudioGeneratorMP3();
   out = new AudioOutputI2S();
-
   // bclk, lrc, din
   out->SetPinout(15, 4, 5);
   // out->SetPinout(9, 8, 10);
@@ -196,58 +220,64 @@ void playAudio(String filename) {
   delete mp3;
 }
 
+void playBuffer() {
+  Serial.println("Playing buffer");
+  Serial.println(bytesRead);
+  AudioGeneratorMP3 *mp3;
+  AudioFileSourcePROGMEM *file;
+  AudioOutputI2S *out;
+
+  file = new AudioFileSourcePROGMEM(source, bytesRead);
+  mp3 = new AudioGeneratorMP3();
+  out = new AudioOutputI2S();
+  // bclk, lrc, din
+  out->SetPinout(15, 4, 5);
+  // out->SetPinout(9, 8, 10);
+
+  if (mp3->begin(file, out)) {
+    while (mp3->isRunning()) {
+      if (!mp3->loop()) {
+        mp3->stop();
+      }
+    }
+  }
+
+  memset(source, 0, bufferSize);
+  bytesRead = 0;
+
+  delete file;
+  delete out;
+  delete mp3;
+}
+
 void playStream(String paymentHash) {
   String URL = "http://ln.coinos.io:9090/" + paymentHash + ".mp3";
 
-  http.begin(wifi2, URL.c_str());
-  int httpCode = http.GET();
+  AudioGeneratorMP3 *mp3;
+  AudioFileSourceHTTPStream *file;
+  AudioFileSourceBuffer *buff;
+  AudioOutputI2S *out;
 
-  size_t dataSize = 42 * 1024;
-  size_t chunkSize = 2048;
-  unsigned char* buff = new unsigned char[chunkSize];
-  unsigned char* data = new unsigned char[dataSize];
-  size_t totalRead = 0;
+  file = new AudioFileSourceHTTPStream(URL.c_str());
+  buff = new AudioFileSourceBuffer(file, 16384);
+  mp3 = new AudioGeneratorMP3();
+  out = new AudioOutputI2S();
 
-  if (httpCode == HTTP_CODE_OK) {
-    int contentLength = http.getSize();
+  out->SetPinout(15, 4, 5);
+  // out->SetPinout(9, 8, 10);
 
-    Stream &stream = http.getStream();
-    while (stream.available()) {
-      size_t bytesRead = stream.readBytes(buff, chunkSize);
-      if (bytesRead + totalRead <= dataSize) memcpy(data + totalRead, buff, bytesRead);
-      totalRead += bytesRead;
-    }
-
-    http.end();
-
-    delete[] buff;
-
-    AudioGeneratorMP3 *mp3;
-    AudioFileSourcePROGMEM *file;
-    AudioOutputI2S *out;
-
-    file = new AudioFileSourcePROGMEM(data, contentLength);
-    mp3 = new AudioGeneratorMP3();
-    out = new AudioOutputI2S();
-    // bclk, lrc, din
-    out->SetPinout(15, 4, 5);
-    // out->SetPinout(9, 8, 10);
-
-    if (mp3->begin(file, out)) {
-      while (mp3->isRunning()) {
-        if (!mp3->loop()) {
-          mp3->stop();
-        }
+  if (mp3->begin(buff, out)) {
+    while (mp3->isRunning()) {
+      if (!mp3->loop()) {
+        mp3->stop();
       }
     }
-
-    delete file;
-    delete out;
-    delete mp3;
-    delete[] data;
-  } else {
-    Serial.println("HTTP request failed");
   }
+
+  delete file;
+  delete buff;
+  delete out;
+  delete mp3;
 }
 
 int period = 10000;
@@ -257,9 +287,11 @@ void loop() {
   ArduinoOTA.handle();
 
   if (ready && !paymentHash.isEmpty()) {
+    Serial.println("Ready!");
     // delay(3500);
     playAudio("/received.mp3");
-    playStream(paymentHash);
+    playBuffer();
+    // playStream(paymentHash);
     paymentHash = "";
     ready = false;
   } 
