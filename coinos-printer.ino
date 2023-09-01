@@ -81,7 +81,6 @@ void callback(char *topic, byte *payload, unsigned int length) {
       int i = 0;
       int z = 32;
 
-
       // File file = LittleFS.open("/test.mp3", "w");
       // if (!file) {
       //   Serial.println("Failed to open file for writing");
@@ -95,13 +94,19 @@ void callback(char *topic, byte *payload, unsigned int length) {
       // file.close();
       //
 
+      // Serial.println();
+      // Serial.println("Source");
+      // Serial.println();
 
-      for (int j = 0; j < 256; j++) {
-        if (j % 16 == 0) Serial.println();
-        if (j % 2 == 0) Serial.print(" ");
-        if (source[j] < 0x10) Serial.print('0');
-        Serial.print(source[j], HEX);
-      }
+      // for (int j = 0; j < 1024; j++) {
+      //   if (j % 16 == 0)
+      //     Serial.println();
+      //   if (j % 2 == 0)
+      //     Serial.print(" ");
+      //   if (source[j] < 0x10)
+      //     Serial.print('0');
+      //   Serial.print(source[j], HEX);
+      // }
 
       while (i < bytesRead) {
         int l = z;
@@ -117,27 +122,27 @@ void callback(char *topic, byte *payload, unsigned int length) {
         payload[5] = n & 0xFF;
         memcpy(payload + 6, source + i, l);
 
-        delay(500);
+        delay(10);
 
         mqtt.publish(username, payload, 6 + l);
         if (n < 12) {
-          Serial.println("");
-          Serial.println("");
-          Serial.print("Echoing ");
-          Serial.print(n);
-          Serial.print(" ");
-          Serial.print(i);
-          Serial.print(" ");
-          Serial.print(l);
-          Serial.print(" ");
-          Serial.print(bytesRead);
-          Serial.println("");
-          for (int j = 0; j < l; j++) {
-            if (j % 16 == 0) Serial.println();
-            if (j % 2 == 0) Serial.print(" ");
-            if (payload[j + 6] < 0x10) Serial.print('0');
-            Serial.print(payload[j + 6], HEX);
-          }
+          // Serial.println("");
+          // Serial.println("");
+          // Serial.print("Echoing ");
+          // Serial.print(n);
+          // Serial.print(" ");
+          // Serial.print(i);
+          // Serial.print(" ");
+          // Serial.print(l);
+          // Serial.print(" ");
+          // Serial.print(bytesRead);
+          // Serial.println("");
+          // for (int j = 0; j < l; j++) {
+          //   if (j % 16 == 0) Serial.println();
+          //   if (j % 2 == 0) Serial.print(" ");
+          //   if (payload[j + 6] < 0x10) Serial.print('0');
+          //   Serial.print(payload[j + 6], HEX);
+          // }
         }
 
         i += l;
@@ -185,19 +190,20 @@ void callback(char *topic, byte *payload, unsigned int length) {
     receivedChunks[chunk] = 1;
 
     if (bytesRead + length <= bufferSize) {
-      memcpy(source + chunk * length, payload, length);
+      memcpy(source + bytesRead, payload, length);
       bytesRead += length;
 
-      if (chunk < 4) {
-        Serial.println("");
-        Serial.print("Chunk ");
-        Serial.println(chunk);
-        Serial.print("Source: ");
-        for (int j = 0; j < bytesRead; j++) {
-          Serial.print(source[j], HEX);
-        }
-        Serial.println("");
-      }
+      // if (chunk < 10) {
+      //   for (int j = 0; j < length; j++) {
+      //     if (j % 16 == 0)
+      //       Serial.println();
+      //     if (j % 2 == 0)
+      //       Serial.print(" ");
+      //     if (payload[j] < 0x10)
+      //       Serial.print('0');
+      //     Serial.print(payload[j], HEX);
+      //   }
+      // }
     }
 
     return;
