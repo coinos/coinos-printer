@@ -13,11 +13,8 @@
 #include <TimeLib.h>
 #include <WiFi.h>
 
-// #include <HardwareSerial.h>
 #define printer Serial2
-#define CHECKSUM_SIZE 4 // CRC32 uses 4 bytes
-
-// HardwareSerial printer(1);
+#define CHECKSUM_SIZE 4
 
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
@@ -50,7 +47,7 @@ unsigned char source[bufferSize];
 size_t bytesRead = 0;
 
 const int MAX_CHUNKS = 128;
-byte receivedChunks[MAX_CHUNKS] = {0}; // All set to not received
+byte receivedChunks[MAX_CHUNKS] = {0};
 
 void callback(char *topic, byte *payload, unsigned int length) {
   char message[length + 1];
@@ -76,80 +73,7 @@ void callback(char *topic, byte *payload, unsigned int length) {
 
     if (missingChunks.isEmpty()) {
       buffering = false;
-
-      int n = 0;
-      int i = 0;
-      int z = 32;
-
-      // File file = LittleFS.open("/test.mp3", "w");
-      // if (!file) {
-      //   Serial.println("Failed to open file for writing");
-      //   return;
-      // }
-      //
-      // size_t bytesWritten = file.write(source, bytesRead);
-      // if (bytesWritten == 0) {
-      //   Serial.println("File write failed");
-      // }
-      // file.close();
-      //
-
-      // Serial.println();
-      // Serial.println("Source");
-      // Serial.println();
-
-      // for (int j = 0; j < 1024; j++) {
-      //   if (j % 16 == 0)
-      //     Serial.println();
-      //   if (j % 2 == 0)
-      //     Serial.print(" ");
-      //   if (source[j] < 0x10)
-      //     Serial.print('0');
-      //   Serial.print(source[j], HEX);
-      // }
-
-      while (i < bytesRead) {
-        int l = z;
-        if (i + l > bytesRead)
-          l = bytesRead - i;
-
-        byte payload[6 + l];
-        payload[0] = 0xEE;
-        payload[1] = 0xEE;
-        payload[2] = 0xEE;
-        payload[3] = 0xEE;
-        payload[4] = (n >> 8) & 0xFF;
-        payload[5] = n & 0xFF;
-        memcpy(payload + 6, source + i, l);
-
-        delay(10);
-
-        mqtt.publish(username, payload, 6 + l);
-        if (n < 12) {
-          // Serial.println("");
-          // Serial.println("");
-          // Serial.print("Echoing ");
-          // Serial.print(n);
-          // Serial.print(" ");
-          // Serial.print(i);
-          // Serial.print(" ");
-          // Serial.print(l);
-          // Serial.print(" ");
-          // Serial.print(bytesRead);
-          // Serial.println("");
-          // for (int j = 0; j < l; j++) {
-          //   if (j % 16 == 0) Serial.println();
-          //   if (j % 2 == 0) Serial.print(" ");
-          //   if (payload[j + 6] < 0x10) Serial.print('0');
-          //   Serial.print(payload[j + 6], HEX);
-          // }
-        }
-
-        i += l;
-        n++;
-      }
-
-      // ready = true;
+      ready = true;
     } else {
       Serial.println("Missing chunks " + missingChunks);
       mqtt.publish(username, ("missing:" + missingChunks).c_str());
@@ -179,7 +103,6 @@ void callback(char *topic, byte *payload, unsigned int length) {
     uint32_t expected;
     memcpy(&expected, &payload[6], CHECKSUM_SIZE);
 
-    // Strip sequence number and checksum
     payload += 10;
     length -= 10;
 
@@ -192,18 +115,6 @@ void callback(char *topic, byte *payload, unsigned int length) {
     if (bytesRead + length <= bufferSize) {
       memcpy(source + bytesRead, payload, length);
       bytesRead += length;
-
-      // if (chunk < 10) {
-      //   for (int j = 0; j < length; j++) {
-      //     if (j % 16 == 0)
-      //       Serial.println();
-      //     if (j % 2 == 0)
-      //       Serial.print(" ");
-      //     if (payload[j] < 0x10)
-      //       Serial.print('0');
-      //     Serial.print(payload[j], HEX);
-      //   }
-      // }
     }
 
     return;
@@ -364,8 +275,10 @@ void playBuffer() {
   file = new AudioFileSourcePROGMEM(source, bytesRead);
   mp3 = new AudioGeneratorMP3();
   out = new AudioOutputI2S();
-  // bclk, lrc, din
+  
   out->SetPinout(15, 4, 5);
+  
+  // bclk, lrc, din
   // out->SetPinout(9, 8, 10);
 
   if (mp3->begin(file, out)) {
@@ -418,11 +331,8 @@ void loop() {
   ArduinoOTA.handle();
 
   if (ready && !paymentHash.isEmpty()) {
-    // delay(3500);
     playAudio("/received.mp3");
     playBuffer();
-    playAudio("/test.mp3");
-    // playStream(paymentHash);
     paymentHash = "";
     ready = false;
   }
