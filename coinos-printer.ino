@@ -13,13 +13,20 @@
 #include <TimeLib.h>
 #include <WiFi.h>
 
-#define printer Serial2
+// #if CONFIG_IDF_TARGET_ESP32C3
+#include <HardwareSerial.h>
+HardwareSerial printer(1);
+// #else
+// #define printer Serial2
+// #endif 
+
 #define CHECKSUM_SIZE 4
 
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 String paymentHash;
 bool ready = false;
+bool easter = false;
 bool buffering = false;
 
 void split(String message, char delimiter, String parts[], int partsSize) {
@@ -55,6 +62,10 @@ void callback(char *topic, byte *payload, unsigned int length) {
   message[length] = '\0';
 
   int totalChunks = 0;
+
+  if (strncmp(message, "easter", 6) == 0) {
+    easter = true;
+  }
 
   if (strncmp(message, "end:", 4) == 0) {
     strtok(message, ":");
@@ -121,8 +132,9 @@ void callback(char *topic, byte *payload, unsigned int length) {
   }
 
   if (strncmp(message, "pay:", 4) == 0) {
-    strcpy(message, message + 4);
+    memmove(message, message + 4, strlen(message + 4) + 1);
     Serial.println("Receipt");
+    Serial.println(message);
 
     String receipt = R"(
 
@@ -138,6 +150,8 @@ Amount: $$fiat
 Tip:    $$fiatTip
 
 Total:  $$fiatTotal
+
+https://coinos.io/payment/$paymentHash
 
 ************************
 
@@ -180,8 +194,8 @@ Total:  $$fiatTotal
     if (tip > 0) {
       receipt.replace("$fiatTip", fiatTipString);
     } else {
-      receipt.replace("  Amount: $$fiat\n", "");
-      receipt.replace("  Tip:    $$fiatTip\n", "");
+      receipt.replace("Tip:    $$fiatTip\n", "");
+      receipt.replace("Amount: $$fiat\n", "");
     }
 
     receipt.replace("$fiatTotal", fiatTotalString);
@@ -189,6 +203,7 @@ Total:  $$fiatTotal
     receipt.replace("$tip", String(tip));
     receipt.replace("$time", timeString);
     receipt.replace("$fiat", fiatString);
+    receipt.replace("$paymentHash", parts[4]);
 
     Serial.println(receipt);
     printer.println(receipt);
@@ -200,7 +215,7 @@ HTTPClient http;
 
 void setup() {
   Serial.begin(115200);
-  printer.begin(9600);
+  printer.begin(9600, SERIAL_8N1, -1, 6);
 
   while (!Serial)
     delay(10);
@@ -249,8 +264,8 @@ void playAudio(String filename) {
   mp3 = new AudioGeneratorMP3();
   out = new AudioOutputI2S();
   // bclk, lrc, din
-  out->SetPinout(15, 4, 5);
-  // out->SetPinout(9, 8, 10);
+  // out->SetPinout(15, 4, 5);
+  out->SetPinout(9, 8, 10);
 
   if (mp3->begin(file, out)) {
     while (mp3->isRunning()) {
@@ -276,10 +291,10 @@ void playBuffer() {
   mp3 = new AudioGeneratorMP3();
   out = new AudioOutputI2S();
   
-  out->SetPinout(15, 4, 5);
+  // out->SetPinout(15, 4, 5);
   
   // bclk, lrc, din
-  // out->SetPinout(9, 8, 10);
+  out->SetPinout(9, 8, 10);
 
   if (mp3->begin(file, out)) {
     while (mp3->isRunning()) {
@@ -289,6 +304,7 @@ void playBuffer() {
     }
   }
 
+  easter = false;
   delete file;
   delete out;
   delete mp3;
@@ -331,7 +347,7 @@ void loop() {
   ArduinoOTA.handle();
 
   if (ready && !paymentHash.isEmpty()) {
-    playAudio("/received.mp3");
+    if (!easter) playAudio("/received.mp3");
     playBuffer();
     paymentHash = "";
     ready = false;
