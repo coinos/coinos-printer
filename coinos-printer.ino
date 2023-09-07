@@ -1,33 +1,15 @@
-#include "AudioFileSourceBuffer.h"
-#include "AudioFileSourceHTTPStream.h"
-#include "AudioFileSourceLittleFS.h"
-#include "AudioFileSourcePROGMEM.h"
-#include "AudioGeneratorMP3.h"
-#include "AudioOutputI2S.h"
 #include "defines.h"
 #include <ArduinoOTA.h>
-#include <CRC32.h>
-#include <FS.h>
-#include <HTTPClient.h>
 #include <PubSubClient.h>
 #include <TimeLib.h>
 #include <WiFi.h>
-
-// #if CONFIG_IDF_TARGET_ESP32C3
-#include <HardwareSerial.h>
-HardwareSerial printer(1);
-// #else
-// #define printer Serial2
-// #endif 
+#include <Thermal_Printer.h>
 
 #define CHECKSUM_SIZE 4
 
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 String paymentHash;
-bool ready = false;
-bool easter = false;
-bool buffering = false;
 
 void split(String message, char delimiter, String parts[], int partsSize) {
   int partIndex = 0;
@@ -49,87 +31,10 @@ void split(String message, char delimiter, String parts[], int partsSize) {
   }
 }
 
-const size_t bufferSize = 64 * 1024;
-unsigned char source[bufferSize];
-size_t bytesRead = 0;
-
-const int MAX_CHUNKS = 128;
-byte receivedChunks[MAX_CHUNKS] = {0};
-
 void callback(char *topic, byte *payload, unsigned int length) {
   char message[length + 1];
   memcpy(message, payload, length);
   message[length] = '\0';
-
-  int totalChunks = 0;
-
-  if (strncmp(message, "easter", 6) == 0) {
-    easter = true;
-  }
-
-  if (strncmp(message, "end:", 4) == 0) {
-    strtok(message, ":");
-    totalChunks = atoi(strtok(NULL, ":"));
-
-    String missingChunks = "";
-
-    for (int i = 0; i < totalChunks; i++) {
-      if (receivedChunks[i] == 0) {
-        if (missingChunks.length() > 0) {
-          missingChunks += ",";
-        }
-        missingChunks += String(i + 1);
-      }
-    }
-
-    if (missingChunks.isEmpty()) {
-      buffering = false;
-      ready = true;
-    } else {
-      Serial.println("Missing chunks " + missingChunks);
-      mqtt.publish(username, ("missing:" + missingChunks).c_str());
-    }
-
-    return;
-  }
-
-  if (strcmp(message, "start") == 0) {
-    memset(source, 0, bufferSize);
-    bytesRead = 0;
-    Serial.println("Starting");
-    buffering = true;
-    return;
-  }
-
-  if (buffering) {
-    for (int i = 0; i < 4; i++) {
-      if (payload[i] != 0xDD)
-        return;
-    }
-
-    int chunk = (payload[4] << 8) | payload[5];
-    if (chunk < 0 || chunk > MAX_CHUNKS)
-      return;
-
-    uint32_t expected;
-    memcpy(&expected, &payload[6], CHECKSUM_SIZE);
-
-    payload += 10;
-    length -= 10;
-
-    uint32_t calculated = CRC32::calculate(payload, length);
-    if (calculated != expected)
-      return;
-
-    receivedChunks[chunk] = 1;
-
-    if (bytesRead + length <= bufferSize) {
-      memcpy(source + bytesRead, payload, length);
-      bytesRead += length;
-    }
-
-    return;
-  }
 
   if (strncmp(message, "pay:", 4) == 0) {
     memmove(message, message + 4, strlen(message + 4) + 1);
@@ -206,32 +111,22 @@ https://coinos.io/payment/$paymentHash
     receipt.replace("$paymentHash", parts[4]);
 
     Serial.println(receipt);
-    printer.println(receipt);
+    tpSetFont(0, 0, 0, 0, 0);
+    tpPrint(const_cast<char*>(receipt.c_str()));
   }
 }
 
-WiFiClient wifiClient;
-HTTPClient http;
-
 void setup() {
   Serial.begin(115200);
-  printer.begin(9600, SERIAL_8N1, -1, 6);
 
   while (!Serial)
     delay(10);
-
-  if (!LittleFS.begin()) {
-    Serial.println("Failed to mount LittleFS");
-    return;
-  }
 
   connect();
 
   mqtt.setBufferSize(512);
   mqtt.setServer(mqtt_server, 1883);
   mqtt.setCallback(callback);
-
-  audioLogger = &Serial;
 
   ArduinoOTA.begin();
 }
@@ -255,103 +150,11 @@ void reconnect() {
   }
 }
 
-void playAudio(String filename) {
-  AudioGeneratorMP3 *mp3;
-  AudioFileSourceLittleFS *file;
-  AudioOutputI2S *out;
-
-  file = new AudioFileSourceLittleFS(filename.c_str());
-  mp3 = new AudioGeneratorMP3();
-  out = new AudioOutputI2S();
-  // bclk, lrc, din
-  // out->SetPinout(15, 4, 5);
-  out->SetPinout(9, 8, 10);
-
-  if (mp3->begin(file, out)) {
-    while (mp3->isRunning()) {
-      if (!mp3->loop()) {
-        mp3->stop();
-      }
-    }
-  }
-
-  delete file;
-  delete out;
-  delete mp3;
-}
-
-void playBuffer() {
-  Serial.println("Playing buffer");
-  Serial.println(bytesRead);
-  AudioGeneratorMP3 *mp3;
-  AudioFileSourcePROGMEM *file;
-  AudioOutputI2S *out;
-
-  file = new AudioFileSourcePROGMEM(source, bytesRead);
-  mp3 = new AudioGeneratorMP3();
-  out = new AudioOutputI2S();
-  
-  // out->SetPinout(15, 4, 5);
-  
-  // bclk, lrc, din
-  out->SetPinout(9, 8, 10);
-
-  if (mp3->begin(file, out)) {
-    while (mp3->isRunning()) {
-      if (!mp3->loop()) {
-        mp3->stop();
-      }
-    }
-  }
-
-  easter = false;
-  delete file;
-  delete out;
-  delete mp3;
-}
-
-void playStream(String paymentHash) {
-  String URL = "http://ln.coinos.io:9090/" + paymentHash + ".mp3";
-
-  AudioGeneratorMP3 *mp3;
-  AudioFileSourceHTTPStream *file;
-  AudioFileSourceBuffer *buff;
-  AudioOutputI2S *out;
-
-  file = new AudioFileSourceHTTPStream(URL.c_str());
-  buff = new AudioFileSourceBuffer(file, 16384);
-  mp3 = new AudioGeneratorMP3();
-  out = new AudioOutputI2S();
-
-  out->SetPinout(15, 4, 5);
-  // out->SetPinout(9, 8, 10);
-
-  if (mp3->begin(buff, out)) {
-    while (mp3->isRunning()) {
-      if (!mp3->loop()) {
-        mp3->stop();
-      }
-    }
-  }
-
-  delete file;
-  delete buff;
-  delete out;
-  delete mp3;
-}
-
 int period = 10000;
 unsigned long time_now = 0;
 
 void loop() {
   ArduinoOTA.handle();
-
-  if (ready && !paymentHash.isEmpty()) {
-    if (!easter) playAudio("/received.mp3");
-    playBuffer();
-    paymentHash = "";
-    ready = false;
-  }
 
   if (!mqtt.connected()) {
     reconnect();
@@ -361,6 +164,9 @@ void loop() {
 
   if ((unsigned long)(millis() - time_now) > period) {
     connect();
+    if (!tpIsConnected()) {
+      tpScan("", 3) && tpConnect();
+    } 
 
     time_now = millis();
   }
