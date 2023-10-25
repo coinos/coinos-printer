@@ -8,7 +8,7 @@ When a payment is detected, a receipt will be printed with the amount and time o
 
 ## Setup
 
-   cp defines.h.sample defines.h
+    cp defines.h.sample defines.h
 
 Edit `defines.h` to configure your account username and WiFi ssid / password
 
