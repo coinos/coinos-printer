@@ -12,6 +12,10 @@ When a payment is detected, a receipt will be printed with the amount and time o
 
 Edit `defines.h` to configure your Coinos account username and WiFi ssid / password
 
+Install python dependencies  
+
+    pip install pyserial
+
 ## Install arduino-cli
 
     curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
