@@ -10,7 +10,7 @@ When a payment is detected, a receipt will be printed with the amount and time o
 
     cp defines.h.sample defines.h
 
-Edit `defines.h` to configure your account username and WiFi ssid / password
+Edit `defines.h` to configure your Coinos account username and WiFi ssid / password
 
 ## Install arduino-cli
 
