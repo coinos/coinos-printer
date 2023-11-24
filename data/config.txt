@@ -1,0 +1,4 @@
+YourWiFi-SSSID-Here
+YourWifiPassword
+yourcoinosusername
+yourcoinospassword

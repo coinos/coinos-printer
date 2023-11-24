@@ -1,12 +1,22 @@
-#include "defines.h"
 #include <ArduinoOTA.h>
+#include <FS.h>
 #include <HTTPClient.h>
+#include <LittleFS.h>
 #include <PubSubClient.h>
 #include <TimeLib.h>
 #include <Update.h>
+#include <WebServer.h>
 #include <WiFi.h>
 
-#define CHECKSUM_SIZE 4
+#define FILE_PATH "/config.txt"
+#define AP_MODE_TIMEOUT 300000
+
+WebServer server(80);
+unsigned long apModeStartTime = 0;
+bool isAPMode = false;
+const char *mqtt_server = "mqtt.coinos.io";
+
+String ssid, key, username, password;
 
 #include <HardwareSerial.h>
 HardwareSerial printer(1);
@@ -38,62 +48,73 @@ void split(String message, char delimiter, String parts[], int partsSize) {
   }
 }
 
+void update() {
+  HTTPClient http;
+
+  http.begin(url);
+
+  Serial.println("HTTP request started");
+  int httpCode = http.GET();
+  if (httpCode > 0) {
+    if (httpCode == HTTP_CODE_OK) {
+      int contentLength = http.getSize();
+
+      bool canBegin = Update.begin(contentLength);
+      if (canBegin) {
+        Serial.println("Begin OTA. This may take 2 - 5 minutes to complete.");
+        size_t written = Update.writeStream(http.getStream());
+
+        if (written == contentLength) {
+          Serial.println("Written : " + String(written) + " successfully");
+        } else {
+          Serial.println("Written only : " + String(written) + "/" +
+                         String(contentLength) + ". Retry?");
+        }
+
+        if (Update.end()) {
+          Serial.println("OTA done!");
+          if (Update.isFinished()) {
+            Serial.println("Update successfully completed. Rebooting.");
+            ESP.restart();
+          } else {
+            Serial.println("Update not finished? Something went wrong!");
+          }
+        } else {
+          Serial.println("Error Occurred. Error #: " +
+                         String(Update.getError()));
+        }
+
+      } else {
+        Serial.println("Not enough space to begin OTA");
+        http.end();
+      }
+    }
+  } else {
+    Serial.println("HTTP error: " + http.errorToString(httpCode));
+  }
+  http.end();
+}
+
 void callback(char *topic, byte *payload, unsigned int length) {
   char message[length + 1];
   memcpy(message, payload, length);
   message[length] = '\0';
 
+  Serial.println(message);
+
   if (strncmp(message, "update:", 7) == 0) {
-    HTTPClient http;
+    update();
+  }
 
-    http.begin(url);
-
-    Serial.println("HTTP request started");
-    int httpCode = http.GET();
-    if (httpCode > 0) {
-      if (httpCode == HTTP_CODE_OK) {
-        int contentLength = http.getSize();
-
-        bool canBegin = Update.begin(contentLength);
-        if (canBegin) {
-          Serial.println("Begin OTA. This may take 2 - 5 minutes to complete.");
-          size_t written = Update.writeStream(http.getStream());
-
-          if (written == contentLength) {
-            Serial.println("Written : " + String(written) + " successfully");
-          } else {
-            Serial.println("Written only : " + String(written) + "/" +
-                           String(contentLength) + ". Retry?");
-          }
-
-          if (Update.end()) {
-            Serial.println("OTA done!");
-            if (Update.isFinished()) {
-              Serial.println("Update successfully completed. Rebooting.");
-              ESP.restart();
-            } else {
-              Serial.println("Update not finished? Something went wrong!");
-            }
-          } else {
-            Serial.println("Error Occurred. Error #: " +
-                           String(Update.getError()));
-          }
-
-        } else {
-          Serial.println("Not enough space to begin OTA");
-          http.end();
-        }
-      }
-    } else {
-      Serial.println("HTTP error: " + http.errorToString(httpCode));
-    }
-    http.end();
+  if (strncmp(message, "creds:", 5) == 0) {
+    String parts[5];
+    split(message, ':', parts, 5);
+    writeCredentials(parts[1], parts[2], parts[3], parts[4]);
   }
 
   if (strncmp(message, "pay:", 4) == 0) {
     memmove(message, message + 4, strlen(message + 4) + 1);
     Serial.println("Receipt");
-    Serial.println(message);
 
     String receipt = R"(
 
@@ -173,6 +194,11 @@ void setup() {
   Serial.begin(115200);
   printer.begin(9600, SERIAL_8N1, -1, 6);
 
+  if (!LittleFS.begin()) {
+    Serial.println("An Error has occurred while mounting LittleFS");
+    return;
+  }
+
   clientId = "Client-" + String(random(0xffff), HEX);
 
   while (!Serial)
@@ -191,9 +217,9 @@ void reconnect() {
   while (!mqtt.connected()) {
     Serial.print("Attempting MQTT connection...");
 
-    if (mqtt.connect(clientId.c_str(), "admin", "MPJzfq97")) {
+    if (mqtt.connect(clientId.c_str(), username.c_str(), password.c_str())) {
       Serial.println("connected");
-      mqtt.subscribe(username, 1);
+      mqtt.subscribe(username.c_str(), 1);
     } else {
       Serial.print("failed, rc=");
       Serial.print(mqtt.state());
@@ -209,34 +235,147 @@ unsigned long time_now = 0;
 void loop() {
   ArduinoOTA.handle();
 
-  if (!mqtt.connected()) {
-    reconnect();
+  if (isAPMode) {
+    server.handleClient();
+  } else if (WiFi.status() == WL_CONNECTED) {
+    if (!mqtt.connected()) {
+      reconnect();
+    }
+
+    mqtt.loop();
   }
 
-  mqtt.loop();
-
   if ((unsigned long)(millis() - time_now) > period) {
-    connect();
+    Serial.print("ssid ");
+    Serial.print(ssid);
+    Serial.print(" key ");
+    Serial.print(key);
+    Serial.print(" username ");
+    Serial.print(username);
+    Serial.print(" password ");
+    Serial.println(password);
 
+    connect();
     time_now = millis();
   }
 }
 
+bool apMode;
 void connect() {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (isAPMode) {
+    if (millis() - apModeStartTime > AP_MODE_TIMEOUT) {
+      Serial.println("AP mode timeout reached. Rebooting...");
+      ESP.restart();
+    }
+  } else if (WiFi.status() != WL_CONNECTED) {
     WiFi.disconnect();
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(ssid);
 
-    WiFi.begin(ssid, password);
+    if (!readCredentials()) {
+      Serial.println("Failed to read credentials. Starting AP mode...");
+      startAPMode();
+      return;
+    }
 
-    while (WiFi.status() != WL_CONNECTED) {
+    WiFi.begin(ssid.c_str(), key.c_str());
+
+    int retryCount = 0;
+    while (WiFi.status() != WL_CONNECTED && retryCount < 20) {
       delay(500);
-      Serial.print(".");
+      Serial.print("Connecting to ");
+      Serial.println(ssid);
+      retryCount++;
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("Failed to connect. Starting AP mode...");
+      startAPMode();
+    } else {
+      Serial.println("Connected to WiFi");
+      // Continue with normal operation
     }
 
     Serial.println("WiFi connected");
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
   }
+}
+
+bool readCredentials() {
+  File file = LittleFS.open(FILE_PATH, "r");
+  if (!file) {
+    Serial.println("Failed to open file for reading");
+    return false;
+  }
+
+  ssid = file.readStringUntil('\n');
+  ssid.trim();
+
+  key = file.readStringUntil('\n');
+  key.trim();
+
+  username = file.readStringUntil('\n');
+  username.trim();
+
+  password = file.readStringUntil('\n');
+  password.trim();
+
+  file.close();
+  return true;
+}
+
+void writeCredentials(const String &ssid, const String &key,
+                      const String &username, const String &password) {
+  File file = LittleFS.open(FILE_PATH, "w");
+  if (!file) {
+    Serial.println("Failed to open file for writing");
+    return;
+  }
+
+  file.println(ssid);
+  file.println(key);
+  file.println(username);
+  file.println(password);
+  file.close();
+}
+
+void startAPMode() {
+  isAPMode = true;
+  apModeStartTime = millis();
+
+  WiFi.softAP("CoinosPrinter", "21bitcoin");
+
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+
+  server.on("/", HTTP_GET, []() {
+    server.sendHeader("Connection", "close");
+    server.send(
+        200, "text/html",
+        "<form action=\"/save\" method=\"POST\"> "
+        "<input type=\"text\" name=\"ssid\" placeholder=\"wifi ssid\"> "
+        "<input type=\"password\" name=\"key\" placeholder=\"wifi key\"> "
+        "<input type=\"text\" name=\"username\" placeholder=\"coinos "
+        "username\"> "
+        "<input type=\"password\" name=\"password\" placeholder=\"coinos "
+        "password\"> "
+        "<input type=\"submit\" value=\"Save\"> "
+        "</form>");
+  });
+
+  server.on("/save", HTTP_POST, []() {
+    String ssid = server.arg("ssid");
+    String key = server.arg(" key");
+    String username = server.arg(" username");
+    String password = server.arg(" password");
+
+    writeCredentials(ssid, key, username, password);
+
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", "Credentials Saved. Rebooting...");
+    delay(1000);
+    ESP.restart();
+  });
+
+  server.begin();
 }

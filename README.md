@@ -6,12 +6,6 @@ The code will establish a connection to the <a href="https://coinos.io/docs">Coi
 
 When a payment is detected, a receipt will be printed with the amount and time of the transaction.
 
-## Setup
-
-   cp defines.h.sample defines.h
-
-Edit `defines.h` to configure your account username and WiFi ssid / password
-
 ## Install arduino-cli
 
     curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
@@ -26,7 +20,24 @@ Edit `$HOME/.arduino15/arduino-cli.yaml` to add ESP32 package url:
     arduino-cli core update-index
     arduino-cli core install esp32:esp32
 
+## Install mklittlefs
+
+    wget https://github.com/earlephilhower/mklittlefs/releases/download/3.2.0/x86_64-linux-gnu-mklittlefs-975bd0f.tar.gz
+    tar xf x86_64-linux-gnu-mklittlefs-975bd0f.tar.gz
+
+## Install esptool
+
+    pip install esptool
+
+## Configure your WiFi and Coinos credentials
+
+    # edit data/config.txt
+
+## Create the LittleFS partition
+
+    mklittlefs -c data -p 256 -b 4096 -s 0x20000 littlefs.img
+
 ## Flashing
 
-    sudo chmod a+rw /dev/ttyACM0
     arduino-cli compile -b esp32:esp32:esp32c3 --libraries $PWD/libraries --build-property build.partitions=min_spiffs -u -p /dev/ttyACM0
+    esptool.py --port /dev/ttyACM0 write_flash 0x3D0000 littlefs.img

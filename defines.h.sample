@@ -1,9 +1,0 @@
-#ifndef defines_h
-#define defines_h
-
-const char* username = "demo";
-const char* ssid = "yourssid";
-const char* password = "yourpass";
-const char* mqtt_server = "ln.coinos.io";
-
-#endif
