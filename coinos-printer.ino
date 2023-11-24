@@ -18,6 +18,9 @@ const char *mqtt_server = "mqtt.coinos.io";
 
 String ssid, key, username, password;
 
+String APSSID = "CoinosPrinter";
+String APPASS = "21bitcoin";
+
 #include <HardwareSerial.h>
 HardwareSerial printer(1);
 
@@ -110,6 +113,12 @@ void callback(char *topic, byte *payload, unsigned int length) {
     String parts[5];
     split(message, ':', parts, 5);
     writeCredentials(parts[1], parts[2], parts[3], parts[4]);
+  }
+
+  if (strncmp(message, "msg:", 4) == 0) {
+    String parts[2];
+    split(message, ':', parts, 2);
+    printer.println(parts[1]);
   }
 
   if (strncmp(message, "pay:", 4) == 0) {
@@ -248,12 +257,8 @@ void loop() {
   if ((unsigned long)(millis() - time_now) > period) {
     Serial.print("ssid ");
     Serial.print(ssid);
-    Serial.print(" key ");
-    Serial.print(key);
     Serial.print(" username ");
-    Serial.print(username);
-    Serial.print(" password ");
-    Serial.println(password);
+    Serial.println(username);
 
     connect();
     time_now = millis();
@@ -342,7 +347,7 @@ void startAPMode() {
   isAPMode = true;
   apModeStartTime = millis();
 
-  WiFi.softAP("CoinosPrinter", "21bitcoin");
+  WiFi.softAP(APSSID, APPASS);
 
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");

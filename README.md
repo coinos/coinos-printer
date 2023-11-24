@@ -1,10 +1,21 @@
 # Coinos Printer
 
-This code can be flashed onto an <a href="https://www.aliexpress.com/item/33011482127.html">Xiao Seeed ESP32 C3</a> to instruct it to connect to a WiFi AP and <a href="https://www.aliexpress.com/item/1005006024057955.html">thermal printer</a>.
+This code can be flashed onto a <a href="https://www.aliexpress.com/item/33011482127.html">Xiao Seeed ESP32 C3</a> to instruct it to connect to a WiFi AP and control a <a href="https://www.aliexpress.com/item/1005006024057955.html">cheap thermal printer</a>.
 
-The code will establish a connection to the <a href="https://coinos.io/docs">Coinos API</a> and listen for payments that are received.
+The code will establish a connection to the Coinos MQTT broker and listen for payments that are received.
+
+If it has trouble connecting to WiFi, it will go into AP mode and create a network called `CoinosPrinter` with password `21bitcoin` which will allow you to reset its WiFi and Coinos credentials by visiting `http://192.168.4.1`
 
 When a payment is detected, a receipt will be printed with the amount and time of the transaction.
+
+The printer looks for MQTT messages with these prefixes
+
+    pay: - indicates an incoming payment payload to be printed
+    update: - instructs it to fetch a new firmware from https://coinos.io/api/public/coinos-printer.ino.bin and flash itself
+    creds: - tells it to use new wifi and coinos credentials
+    msg: - tells it to print whatever text you send it
+
+The printer will periodically check in with a health update so you can remotely monitor its status in the field.
 
 ## Install arduino-cli
 
