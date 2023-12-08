@@ -281,10 +281,14 @@ void connect() {
       return;
     }
 
-    WiFi.begin(ssid.c_str(), key.c_str());
+    if (key && key != "none") {
+      WiFi.begin(ssid.c_str(), key.c_str());
+    } else {
+      WiFi.begin(ssid.c_str());
+    } 
 
     int retryCount = 0;
-    while (WiFi.status() != WL_CONNECTED && retryCount < 20) {
+    while (WiFi.status() != WL_CONNECTED && retryCount < 50) {
       delay(500);
       Serial.print("Connecting to ");
       Serial.println(ssid);
