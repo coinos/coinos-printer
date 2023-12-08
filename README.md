@@ -1,8 +1,10 @@
 # Coinos Printer
 
-This code can be flashed onto a <a href="https://www.aliexpress.com/item/33011482127.html">Xiao Seeed ESP32 C3</a> to instruct it to connect to a WiFi AP and control a <a href="https://www.aliexpress.com/item/1005006024057955.html">cheap thermal printer</a>.
+This code can be flashed onto a <a href="https://www.aliexpress.com/item/33011482127.html">Xiao Seeed ESP32 C3</a> to instruct it to connect to a WiFi AP and control a <a href="https://www.aliexpress.com/item/1005006024057955.html">thermal printer</a>.
 
-The code will establish a connection to the Coinos MQTT broker and listen for payments that are received.
+The code will establish a connection to Coinos and listen for payments that are received into a specified account.
+
+See this video for an overview, the build process is shown at the end: https://www.youtube.com/watch?v=JiGoOJZUrP8&ab
 
 If it has trouble connecting to WiFi, it will go into AP mode and create a network called `CoinosPrinter` with password `21bitcoin` which will allow you to reset its WiFi and Coinos credentials by visiting `http://192.168.4.1`
 
