@@ -4,7 +4,9 @@ This code can be flashed onto a <a href="https://www.aliexpress.com/item/3301148
 
 The code will establish a connection to Coinos and listen for payments that are received into a specified account.
 
-See this video for an overview, the build process is shown at the end: https://www.youtube.com/watch?v=JiGoOJZUrP8&ab
+See this video for an overview, the build process is shown at the end: https://www.youtube.com/watch?v=JiGoOJZUrP8
+
+[![Printer Video](https://img.youtube.com/vi/JiGoOJZUrP8/0.jpg)](https://www.youtube.com/watch?v=JiGoOJZUrP8)
 
 If it has trouble connecting to WiFi, it will go into AP mode and create a network called `CoinosPrinter` with password `21bitcoin` which will allow you to reset its WiFi and Coinos credentials by visiting `http://192.168.4.1`
 
