@@ -1,3 +1,4 @@
+#include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <FS.h>
 #include <HTTPClient.h>
@@ -9,7 +10,7 @@
 #include <WiFi.h>
 
 #define FILE_PATH "/config.txt"
-#define AP_MODE_TIMEOUT 300000
+#define AP_MODE_TIMEOUT 600000
 
 WebServer server(80);
 unsigned long apModeStartTime = 0;
@@ -128,27 +129,31 @@ void callback(char *topic, byte *payload, unsigned int length) {
     String receipt = R"(
 
 
-************************
-COINOS PAYMENT RECEIVED
-************************
+--------------------------------
+        COINOS PAYMENT
+--------------------------------
 
 $date
 $time
+
+$items
 
 Amount: $$fiat
 Tip:    $$fiatTip
 
 Total:  $$fiatTotal
 
+Notes: $memo
+
 https://coinos.io/payment/$paymentHash
 
-************************
+--------------------------------
 
 
   )";
 
-    String parts[5];
-    split(message, ':', parts, 5);
+    String parts[7];
+    split(message, ':', parts, 7);
 
     paymentHash = parts[4];
 
@@ -183,7 +188,7 @@ https://coinos.io/payment/$paymentHash
     if (tip > 0) {
       receipt.replace("$fiatTip", fiatTipString);
     } else {
-      receipt.replace("Tip:    $$fiatTip\n", "");
+      receipt.replace("Tip:    $$fiatTip\n\n", "");
       receipt.replace("Amount: $$fiat\n", "");
     }
 
@@ -193,6 +198,18 @@ https://coinos.io/payment/$paymentHash
     receipt.replace("$time", timeString);
     receipt.replace("$fiat", fiatString);
     receipt.replace("$paymentHash", parts[4]);
+
+    if (parts[5].equals("") || parts[5].equals("undefined") || parts[5].equals("null")) {
+      receipt.replace("Notes: $memo\n\n", "");
+    } else {
+      receipt.replace("$memo", parts[5]);
+    }
+
+    if (parts[6].equals("") || parts[6].equals("undefined") || parts[6].equals("null")) {
+      receipt.replace("$items\n\n", "");
+    } else {
+      receipt.replace("$items", parts[6]);
+    }
 
     Serial.println(receipt);
     printer.println(receipt);
@@ -351,7 +368,7 @@ void startAPMode() {
   isAPMode = true;
   apModeStartTime = millis();
 
-  WiFi.softAP(APSSID, APPASS);
+  WiFi.softAP(APSSID + "-" + WiFi.macAddress(), APPASS);
 
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
@@ -362,13 +379,13 @@ void startAPMode() {
     server.send(
         200, "text/html",
         "<form action=\"/save\" method=\"POST\"> "
-        "<input type=\"text\" name=\"ssid\" placeholder=\"wifi ssid\"> "
-        "<input type=\"password\" name=\"key\" placeholder=\"wifi key\"> "
+        "<input type=\"text\" name=\"ssid\" placeholder=\"wifi ssid\" style=\"font-size: 24px; margin: 10px 0; padding: 6px; \"> <br>"
+        "<input type=\"text\" name=\"key\" placeholder=\"wifi key\" style=\"font-size: 24px; margin: 10px 0; padding: 6px;\"> <br> "
         "<input type=\"text\" name=\"username\" placeholder=\"coinos "
-        "username\"> "
-        "<input type=\"password\" name=\"password\" placeholder=\"coinos "
-        "password\"> "
-        "<input type=\"submit\" value=\"Save\"> "
+        "username\" style=\"font-size: 24px; margin: 10px 0; padding: 6px;\"> <br> "
+        "<input type=\"text\" name=\"password\" placeholder=\"coinos "
+        "password\" style=\"font-size: 24px; margin: 10px 0; padding: 6px;\"> <br> <br> "
+        "<input type=\"submit\" value=\"Save\" style=\"font-size: 24px; margin: 20px 0; padding: 6px;\"> "
         "</form>");
   });
 
