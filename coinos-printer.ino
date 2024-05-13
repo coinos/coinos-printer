@@ -279,6 +279,8 @@ void loop() {
     Serial.print(" username ");
     Serial.println(username);
 
+    mqtt.publish(username.c_str(), "heartbeat");
+
     connect();
     time_now = millis();
   }
@@ -393,9 +395,9 @@ void startAPMode() {
 
   server.on("/save", HTTP_POST, []() {
     String ssid = server.arg("ssid");
-    String key = server.arg(" key");
-    String username = server.arg(" username");
-    String password = server.arg(" password");
+    String key = server.arg("key");
+    String username = server.arg("username");
+    String password = server.arg("password");
 
     writeCredentials(ssid, key, username, password);
 
