@@ -128,7 +128,6 @@ void callback(char *topic, byte *payload, unsigned int length) {
 
     String receipt = R"(
 
-
 --------------------------------
         COINOS PAYMENT
 --------------------------------
@@ -148,6 +147,9 @@ Notes: $memo
 https://coinos.io/payment/$paymentHash
 
 --------------------------------
+
+
+
 
 
   )";
